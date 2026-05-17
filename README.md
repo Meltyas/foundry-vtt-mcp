@@ -115,7 +115,7 @@ Once connected, ask Claude Desktop:
 
 ## Features
 
-- **36 MCP Tools** that allow Claude to interact with Foundry
+- **37 MCP Tools** that allow Claude to interact with Foundry
 - **Character Management**: Access stats, abilities, inventory, and detailed entity information
 - **Token Manipulation**: Move, update, delete tokens and manage status conditions
 - **Enhanced Compendium Search**: Instant filtering by CR, type, abilities, and more
@@ -166,6 +166,7 @@ Once connected, ask Claude Desktop:
 - **34** list-dsa5-archetypes
 - **35** create-dsa5-character-from-archetype
 - **36** create-campaign-dashboard
+- **37** add-actor-items
 
 ## Settings
 
