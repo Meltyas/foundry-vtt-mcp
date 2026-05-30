@@ -117,6 +117,7 @@ export class QueryHandlers {
     // World item management
     CONFIG.queries[`${modulePrefix}.createWorldItems`] = this.handleCreateWorldItems.bind(this);
     CONFIG.queries[`${modulePrefix}.listWorldItems`] = this.handleListWorldItems.bind(this);
+    CONFIG.queries[`${modulePrefix}.updateWorldItems`] = this.handleUpdateWorldItems.bind(this);
 
     // Phase 7: Token manipulation queries
     CONFIG.queries[`${modulePrefix}.move-token`] = this.handleMoveToken.bind(this);
@@ -1527,6 +1528,27 @@ export class QueryHandlers {
     } catch (error) {
       throw new Error(
         `Failed to list world items: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
+  /**
+   * Handle update world-level items request
+   */
+  private async handleUpdateWorldItems(data: {
+    updates: Array<{ id: string; name?: string; img?: string; system?: Record<string, any>; folder?: string }>;
+  }): Promise<any> {
+    try {
+      const gmCheck = this.validateGMAccess();
+      if (!gmCheck.allowed) return { error: 'Access denied', success: false };
+      this.dataAccess.validateFoundryState();
+      if (!Array.isArray(data?.updates) || data.updates.length === 0) {
+        throw new Error('updates array is required and must not be empty');
+      }
+      return await this.dataAccess.updateWorldItems({ updates: data.updates });
+    } catch (error) {
+      throw new Error(
+        `Failed to update world items: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }

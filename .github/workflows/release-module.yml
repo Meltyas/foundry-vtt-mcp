@@ -1,0 +1,73 @@
+name: Release Foundry Module
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'packages/foundry-module/**'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Build foundry module
+        run: npm run build:foundry
+
+      - name: Read version from module.json
+        id: version
+        run: |
+          VERSION=$(node -p "require('./packages/foundry-module/module.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Package module ZIP
+        run: |
+          cd packages/foundry-module
+          mkdir -p ../../release-tmp
+          zip -r ../../release-tmp/foundry-mcp-bridge.zip \
+            module.json \
+            dist/ \
+            styles/ \
+            lang/ \
+            templates/ \
+            --exclude "*.ts" --exclude "node_modules/*"
+          cd ../..
+
+      - name: Delete existing latest release (if exists)
+        run: |
+          gh release delete latest --yes 2>/dev/null || true
+          git push origin :refs/tags/latest 2>/dev/null || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Latest Build (v${{ steps.version.outputs.version }})"
+          body: |
+            Automatic build from master branch.
+
+            **Version:** ${{ steps.version.outputs.version }}
+
+            ### Install in Foundry VTT
+            Use this manifest URL in Foundry's module installer:
+            ```
+            https://raw.githubusercontent.com/Meltyas/foundry-vtt-mcp/master/packages/foundry-module/module.json
+            ```
+          files: release-tmp/foundry-mcp-bridge.zip
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -4626,6 +4626,52 @@ export class FoundryDataAccess {
         return parentId;
     }
     /**
+     * Update existing world-level Item documents by ID.
+     */
+    async updateWorldItems(params) {
+        this.validateFoundryState();
+        const { updates } = params;
+        if (!Array.isArray(updates) || updates.length === 0) {
+            throw new Error('updates array is required and must not be empty');
+        }
+        const updated = [];
+        const errors = [];
+        for (const patch of updates) {
+            if (!patch.id) {
+                errors.push(`Skipped patch with missing id: ${JSON.stringify(patch)}`);
+                continue;
+            }
+            try {
+                const item = game.items?.get(patch.id);
+                if (!item) {
+                    errors.push(`Item not found: ${patch.id}`);
+                    continue;
+                }
+                const delta = {};
+                if (patch.name !== undefined)
+                    delta.name = patch.name;
+                if (patch.img !== undefined)
+                    delta.img = patch.img;
+                if (patch.system !== undefined)
+                    delta.system = patch.system;
+                if (patch.folder) {
+                    const fId = patch.folder.includes('/')
+                        ? await this.getOrCreateNestedItemFolder(patch.folder)
+                        : await this.getOrCreateFolder(patch.folder, 'Item');
+                    if (fId)
+                        delta.folder = fId;
+                }
+                await item.update(delta);
+                updated.push({ id: item.id, name: delta.name ?? item.name });
+            }
+            catch (error) {
+                errors.push(`Failed to update "${patch.id}": ${error instanceof Error ? error.message : 'Unknown error'}`);
+            }
+        }
+        this.auditLog('updateWorldItems', { count: updates.length }, 'success');
+        return { updated, errors };
+    }
+    /**
      * Create world-level Item documents, optionally organised into nested folders.
      * Folder path uses "/" as separator, e.g. "Recursos del Bosque/Hongos".
      */

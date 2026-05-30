@@ -14,6 +14,8 @@ export type {
   DnD5eCreatureIndex,
   PF2eCreatureIndex,
   DSA5CreatureIndex,
+  CosmereRpgCreatureIndex,
+  DaggerheartCreatureIndex,
   GenericCreatureIndex,
   AnyCreatureIndex,
 } from './types.js';

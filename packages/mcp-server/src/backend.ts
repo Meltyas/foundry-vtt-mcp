@@ -1146,12 +1146,14 @@ async function startBackend(): Promise<void> {
   const { PF2eAdapter } = await import('./systems/pf2e/adapter.js');
   const { DSA5Adapter } = await import('./systems/dsa5/adapter.js');
   const { CosmereRpgAdapter } = await import('./systems/cosmere-rpg/adapter.js');
+  const { DaggerheartAdapter } = await import('./systems/daggerheart/adapter.js');
 
   const systemRegistry = getSystemRegistry(logger);
   systemRegistry.register(new DnD5eAdapter());
   systemRegistry.register(new PF2eAdapter());
   systemRegistry.register(new DSA5Adapter());
   systemRegistry.register(new CosmereRpgAdapter());
+  systemRegistry.register(new DaggerheartAdapter());
 
   logger.info('System registry initialized', {
     supportedSystems: systemRegistry.getSupportedSystems(),

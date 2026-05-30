@@ -11,7 +11,7 @@ import { z } from 'zod';
  * Supported game system identifiers
  * Extend this type when adding new systems
  */
-export type SystemId = 'dnd5e' | 'pf2e' | 'dsa5' | 'cosmere-rpg' | 'other';
+export type SystemId = 'dnd5e' | 'pf2e' | 'dsa5' | 'cosmere-rpg' | 'daggerheart' | 'other';
 
 /**
  * System metadata returned by adapters
@@ -281,6 +281,29 @@ export interface CosmereRpgCreatureIndex extends SystemCreatureIndex {
 }
 
 /**
+ * Daggerheart specific creature index structure
+ */
+export interface DaggerheartCreatureIndex extends SystemCreatureIndex {
+  system: 'daggerheart';
+  systemData: {
+    /** Adversary tier — 1 (minion) to 4 (legendary). Primary power-level proxy. */
+    tier?: number;
+    /** Difficulty value for the adversary. */
+    difficulty?: number;
+    /** Adversary type (e.g. "humanoid", "beast", "undead", etc.) */
+    adversaryType?: string;
+    /** Environment name (for environment-type actors) */
+    environment?: string;
+    /** Max HP */
+    hp?: number;
+    /** Evasion score */
+    evasion?: number;
+    /** Armor score */
+    armorScore?: number;
+  };
+}
+
+/**
  * Generic creature index for unsupported systems
  */
 export interface GenericCreatureIndex extends SystemCreatureIndex {
@@ -296,4 +319,5 @@ export type AnyCreatureIndex =
   | PF2eCreatureIndex
   | DSA5CreatureIndex
   | CosmereRpgCreatureIndex
+  | DaggerheartCreatureIndex
   | GenericCreatureIndex;
