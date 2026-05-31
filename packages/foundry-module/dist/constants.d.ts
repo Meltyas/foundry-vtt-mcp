@@ -20,7 +20,7 @@ export declare const DEFAULT_CONFIG: {
     readonly MCP_HOST: "localhost";
     readonly MCP_PORT: 31415;
     readonly CONNECTION_TIMEOUT: 10;
-    readonly RECONNECT_ATTEMPTS: 5;
+    readonly RECONNECT_ATTEMPTS: 9999;
     readonly RECONNECT_DELAY: 1000;
     readonly LOG_LEVEL: "info";
 };

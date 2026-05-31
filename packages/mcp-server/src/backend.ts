@@ -34,6 +34,10 @@ import { MapGenerationTools } from './tools/map-generation.js';
 
 import { TokenManipulationTools } from './tools/token-manipulation.js';
 
+import { GuardManagementTools } from './tools/guard-management.js';
+
+import { ActorManagementTools } from './tools/actor-management.js';
+
 import { DSA5CharacterCreator } from './systems/dsa5/character-creator.js';
 
 const CONTROL_HOST = '127.0.0.1';
@@ -1179,6 +1183,10 @@ async function startBackend(): Promise<void> {
 
   const tokenManipulationTools = new TokenManipulationTools({ foundryClient, logger });
 
+  const guardManagementTools = new GuardManagementTools({ foundryClient, logger });
+
+  const actorManagementTools = new ActorManagementTools({ foundryClient, logger });
+
   // Initialize mapgen-style backend components for map generation
   let mapGenerationJobQueue: any = null;
   let mapGenerationComfyUIClient: any = null;
@@ -1397,6 +1405,10 @@ async function startBackend(): Promise<void> {
     ...tokenManipulationTools.getToolDefinitions(),
 
     ...mapGenerationTools.getToolDefinitions(),
+
+    ...guardManagementTools.getToolDefinitions(),
+
+    ...actorManagementTools.getToolDefinitions(),
   ];
 
   // Start Foundry connector (owns app port 31415)
@@ -1666,6 +1678,230 @@ async function startBackend(): Promise<void> {
 
                 case 'switch-scene':
                   result = await mapGenerationTools.switchScene(args);
+
+                  break;
+
+                // Guard Management tools
+
+                case 'guard-create-officer':
+                  result = await guardManagementTools.handleCreateOfficer(args);
+
+                  break;
+
+                case 'guard-list-officers':
+                  result = await guardManagementTools.handleListOfficers(args);
+
+                  break;
+
+                case 'guard-delete-officer':
+                  result = await guardManagementTools.handleDeleteOfficer(args);
+
+                  break;
+
+                case 'guard-update-officer':
+                  result = await guardManagementTools.handleUpdateOfficer(args);
+
+                  break;
+
+                case 'guard-organizations-list':
+                  result = await guardManagementTools.handleOrganizationsList(args);
+                  break;
+                case 'guard-organizations-get':
+                  result = await guardManagementTools.handleOrganizationsGet(args);
+                  break;
+                case 'guard-organizations-create':
+                  result = await guardManagementTools.handleOrganizationsCreate(args);
+                  break;
+                case 'guard-organizations-update':
+                  result = await guardManagementTools.handleOrganizationsUpdate(args);
+                  break;
+                case 'guard-organizations-delete':
+                  result = await guardManagementTools.handleOrganizationsDelete(args);
+                  break;
+
+                case 'guard-patrols-list':
+                  result = await guardManagementTools.handlePatrolsList(args);
+                  break;
+                case 'guard-patrols-create':
+                  result = await guardManagementTools.handlePatrolsCreate(args);
+                  break;
+                case 'guard-patrols-delete':
+                  result = await guardManagementTools.handlePatrolsDelete(args);
+                  break;
+
+                case 'guard-resources-list':
+                  result = await guardManagementTools.handleResourcesList(args);
+                  break;
+                case 'guard-resources-create':
+                  result = await guardManagementTools.handleResourcesCreate(args);
+                  break;
+                case 'guard-resources-update':
+                  result = await guardManagementTools.handleResourcesUpdate(args);
+                  break;
+                case 'guard-resources-delete':
+                  result = await guardManagementTools.handleResourcesDelete(args);
+                  break;
+
+                case 'guard-reputations-list':
+                  result = await guardManagementTools.handleReputationsList(args);
+                  break;
+                case 'guard-reputations-create':
+                  result = await guardManagementTools.handleReputationsCreate(args);
+                  break;
+                case 'guard-reputations-update':
+                  result = await guardManagementTools.handleReputationsUpdate(args);
+                  break;
+                case 'guard-reputations-delete':
+                  result = await guardManagementTools.handleReputationsDelete(args);
+                  break;
+
+                case 'guard-crimes-list':
+                  result = await guardManagementTools.handleCrimesList(args);
+                  break;
+                case 'guard-crimes-create':
+                  result = await guardManagementTools.handleCrimesCreate(args);
+                  break;
+                case 'guard-crimes-update':
+                  result = await guardManagementTools.handleCrimesUpdate(args);
+                  break;
+                case 'guard-crimes-delete':
+                  result = await guardManagementTools.handleCrimesDelete(args);
+                  break;
+
+                case 'guard-gangs-list':
+                  result = await guardManagementTools.handleGangsList(args);
+                  break;
+                case 'guard-gangs-create':
+                  result = await guardManagementTools.handleGangsCreate(args);
+                  break;
+                case 'guard-gangs-update':
+                  result = await guardManagementTools.handleGangsUpdate(args);
+                  break;
+                case 'guard-gangs-delete':
+                  result = await guardManagementTools.handleGangsDelete(args);
+                  break;
+
+                case 'guard-pois-list':
+                  result = await guardManagementTools.handlePoisList(args);
+                  break;
+                case 'guard-pois-create':
+                  result = await guardManagementTools.handlePoisCreate(args);
+                  break;
+                case 'guard-pois-update':
+                  result = await guardManagementTools.handlePoisUpdate(args);
+                  break;
+                case 'guard-pois-delete':
+                  result = await guardManagementTools.handlePoisDelete(args);
+                  break;
+
+                case 'guard-prisoners-list':
+                  result = await guardManagementTools.handlePrisonersList(args);
+                  break;
+                case 'guard-prisoners-create':
+                  result = await guardManagementTools.handlePrisonersCreate(args);
+                  break;
+                case 'guard-prisoners-update':
+                  result = await guardManagementTools.handlePrisonersUpdate(args);
+                  break;
+                case 'guard-prisoners-delete':
+                  result = await guardManagementTools.handlePrisonersDelete(args);
+                  break;
+
+                case 'guard-buildings-list':
+                  result = await guardManagementTools.handleBuildingsList(args);
+                  break;
+                case 'guard-buildings-create':
+                  result = await guardManagementTools.handleBuildingsCreate(args);
+                  break;
+                case 'guard-buildings-update':
+                  result = await guardManagementTools.handleBuildingsUpdate(args);
+                  break;
+                case 'guard-buildings-delete':
+                  result = await guardManagementTools.handleBuildingsDelete(args);
+                  break;
+                case 'guard-buildings-activate':
+                  result = await guardManagementTools.handleBuildingsActivate(args);
+                  break;
+                case 'guard-buildings-deactivate':
+                  result = await guardManagementTools.handleBuildingsDeactivate(args);
+                  break;
+                case 'guard-buildings-setHidden':
+                  result = await guardManagementTools.handleBuildingsSetHidden(args);
+                  break;
+
+                case 'guard-finance-get':
+                  result = await guardManagementTools.handleFinanceGet(args);
+                  break;
+                case 'guard-finance-update':
+                  result = await guardManagementTools.handleFinanceUpdate(args);
+                  break;
+
+                case 'guard-phase-get':
+                  result = await guardManagementTools.handlePhaseGet(args);
+                  break;
+                case 'guard-phase-advance':
+                  result = await guardManagementTools.handlePhaseAdvance(args);
+                  break;
+
+                case 'guard-phase-events-list':
+                  result = await guardManagementTools.handlePhaseEventsList(args);
+                  break;
+                case 'guard-phase-events-get':
+                  result = await guardManagementTools.handlePhaseEventsGet(args);
+                  break;
+                case 'guard-phase-events-search':
+                  result = await guardManagementTools.handlePhaseEventsSearch(args);
+                  break;
+                case 'guard-phase-events-create':
+                  result = await guardManagementTools.handlePhaseEventsCreate(args);
+                  break;
+                case 'guard-phase-events-update':
+                  result = await guardManagementTools.handlePhaseEventsUpdate(args);
+                  break;
+                case 'guard-phase-events-cancel':
+                  result = await guardManagementTools.handlePhaseEventsCancel(args);
+                  break;
+                case 'guard-phase-events-delete':
+                  result = await guardManagementTools.handlePhaseEventsDelete(args);
+                  break;
+
+                case 'guard-phase-reports-list':
+                  result = await guardManagementTools.handlePhaseReportsList(args);
+                  break;
+                case 'guard-phase-reports-get':
+                  result = await guardManagementTools.handlePhaseReportsGet(args);
+                  break;
+                case 'guard-phase-reports-search':
+                  result = await guardManagementTools.handlePhaseReportsSearch(args);
+                  break;
+
+                case 'create-actor-folder':
+                  result = await actorManagementTools.handleCreateActorFolder(args);
+
+                  break;
+
+                case 'move-actor-to-folder':
+                  result = await actorManagementTools.handleMoveActorToFolder(args);
+
+                  break;
+
+                case 'update-actor-items':
+                  result = await actorManagementTools.handleUpdateActorItems(args);
+
+                  break;
+
+                case 'create-actor':
+                  result = await actorManagementTools.handleCreateActor(args);
+
+                  break;
+
+                case 'update-actor':
+                  result = await actorManagementTools.handleUpdateActor(args);
+
+                  break;
+
+                case 'add-actor-to-scene':
+                  result = await actorManagementTools.handleAddActorToScene(args);
 
                   break;
 

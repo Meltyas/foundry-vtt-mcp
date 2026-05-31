@@ -226,5 +226,46 @@ export declare class QueryHandlers {
      */
     private handleUpdateWorldItems;
     private handleAddActorItems;
+    /**
+     * Guard Management: Create Officer
+     */
+    private handleCreateGuardOfficer;
+    /**
+     * Guard Management: List Officers
+     */
+    private handleListGuardOfficers;
+    /**
+     * Guard Management: Delete Officer
+     */
+    private handleDeleteGuardOfficer;
+    /**
+     * Guard Management: Update Officer
+     */
+    private handleUpdateGuardOfficer;
+    /**
+     * Actor Management: Update actor properties (img, name, biography, etc.)
+     */
+    /**
+     * Folder management: Create a folder (and optional parent folder) for Actors
+     */
+    private handleCreateFolder;
+    /**
+     * Folder management: Move an actor into a folder by folder ID or name path
+     */
+    private handleMoveActorToFolder;
+    private handleCreateActor;
+    /**
+     * Actor Management: Update embedded items on an actor
+     */
+    private handleUpdateActorItems;
+    /**
+     * Actor Management: Update an existing actor
+     * Supports `folderPath` param: "Parent/Child" creates nested Actor folders and moves actor there.
+     */
+    private handleUpdateActor;
+    /**
+     * Actor Management: Add actor to the active scene as a token
+     */
+    private handleAddActorToScene;
 }
 //# sourceMappingURL=queries.d.ts.map

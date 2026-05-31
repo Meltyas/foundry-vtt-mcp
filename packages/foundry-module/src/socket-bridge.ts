@@ -459,8 +459,13 @@ export class SocketBridge {
       clearTimeout(this.reconnectTimer);
     }
 
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000); // Exponential backoff, max 30s
-    this.reconnectAttempts++;
+    const MAX_DELAY = 30000;
+    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), MAX_DELAY);
+
+    // Once we've hit the max delay, keep the counter stable so it stays at 30s
+    if (delay < MAX_DELAY) {
+      this.reconnectAttempts++;
+    }
 
     this.log(`Scheduling reconnection attempt ${this.reconnectAttempts} in ${delay}ms`);
     this.connectionState = CONNECTION_STATES.RECONNECTING;

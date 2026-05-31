@@ -4647,13 +4647,19 @@ export class FoundryDataAccess {
                     errors.push(`Item not found: ${patch.id}`);
                     continue;
                 }
+                // Build delta. For system fields, merge patch into the current
+                // system object so the DataModel receives a complete valid object.
                 const delta = {};
                 if (patch.name !== undefined)
                     delta.name = patch.name;
                 if (patch.img !== undefined)
                     delta.img = patch.img;
-                if (patch.system !== undefined)
-                    delta.system = patch.system;
+                if (patch.system !== undefined) {
+                    const currentSystem = item.system?.toObject
+                        ? item.system.toObject()
+                        : foundry.utils.deepClone(item.system ?? {});
+                    delta.system = foundry.utils.mergeObject(currentSystem, patch.system, { inplace: false });
+                }
                 if (patch.folder) {
                     const fId = patch.folder.includes('/')
                         ? await this.getOrCreateNestedItemFolder(patch.folder)

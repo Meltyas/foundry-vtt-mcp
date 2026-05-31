@@ -128,6 +128,20 @@ export class QueryHandlers {
       this.handleToggleTokenCondition.bind(this);
     CONFIG.queries[`${modulePrefix}.get-available-conditions`] =
       this.handleGetAvailableConditions.bind(this);
+
+    // Guard Management - Officers
+    CONFIG.queries[`${modulePrefix}.createGuardOfficer`] = this.handleCreateGuardOfficer.bind(this);
+    CONFIG.queries[`${modulePrefix}.listGuardOfficers`] = this.handleListGuardOfficers.bind(this);
+    CONFIG.queries[`${modulePrefix}.deleteGuardOfficer`] = this.handleDeleteGuardOfficer.bind(this);
+    CONFIG.queries[`${modulePrefix}.updateGuardOfficer`] = this.handleUpdateGuardOfficer.bind(this);
+
+    // Actor management
+    CONFIG.queries[`${modulePrefix}.createActor`] = this.handleCreateActor.bind(this);
+    CONFIG.queries[`${modulePrefix}.updateActor`] = this.handleUpdateActor.bind(this);
+    CONFIG.queries[`${modulePrefix}.updateActorItems`] = this.handleUpdateActorItems.bind(this);
+    CONFIG.queries[`${modulePrefix}.addActorToScene`] = this.handleAddActorToScene.bind(this);
+    CONFIG.queries[`${modulePrefix}.createFolder`] = this.handleCreateFolder.bind(this);
+    CONFIG.queries[`${modulePrefix}.moveActorToFolder`] = this.handleMoveActorToFolder.bind(this);
   }
 
   /**
@@ -1586,6 +1600,316 @@ export class QueryHandlers {
       throw new Error(
         `Failed to add actor items: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
+    }
+  }
+
+  /**
+   * Guard Management: Create Officer
+   */
+  private async handleCreateGuardOfficer(params: any): Promise<any> {
+    const gmCheck = this.validateGMAccess();
+    if (!gmCheck.allowed) return { error: 'GM access required' };
+
+    try {
+      const gm = (window as any).GuardManagement;
+      if (!gm?.officerManager) {
+        return { error: 'guard-management module not available or not initialized' };
+      }
+
+      const officer = await gm.officerManager.create({
+        actorId: params.actorId,
+        actorName: params.actorName,
+        actorImg: params.actorImg,
+        title: params.title || 'Oficial',
+        skill: params.skill,
+        pros: params.pros || [],
+        cons: params.cons || [],
+        organizationId: params.organizationId,
+        isCivil: params.isCivil ?? false,
+      });
+
+      return { success: true, officer };
+    } catch (error: any) {
+      return { error: error?.message || String(error) };
+    }
+  }
+
+  /**
+   * Guard Management: List Officers
+   */
+  private async handleListGuardOfficers(params: any): Promise<any> {
+    try {
+      const gm = (window as any).GuardManagement;
+      if (!gm?.officerManager) {
+        return { error: 'guard-management module not available or not initialized' };
+      }
+
+      let officers = gm.officerManager.list();
+
+      if (params?.organizationId) {
+        officers = officers.filter((o: any) => o.organizationId === params.organizationId);
+      }
+
+      return { success: true, officers, total: officers.length };
+    } catch (error: any) {
+      return { error: error?.message || String(error) };
+    }
+  }
+
+  /**
+   * Guard Management: Delete Officer
+   */
+  private async handleDeleteGuardOfficer(params: any): Promise<any> {
+    const gmCheck = this.validateGMAccess();
+    if (!gmCheck.allowed) return { error: 'GM access required' };
+
+    try {
+      const gm = (window as any).GuardManagement;
+      if (!gm?.officerManager) {
+        return { error: 'guard-management module not available or not initialized' };
+      }
+
+      const deleted = gm.officerManager.delete(params.officerId);
+      if (!deleted) {
+        return { error: `Officer with id '${params.officerId}' not found` };
+      }
+
+      return { success: true, deletedId: params.officerId };
+    } catch (error: any) {
+      return { error: error?.message || String(error) };
+    }
+  }
+
+  /**
+   * Guard Management: Update Officer
+   */
+  private async handleUpdateGuardOfficer(params: any): Promise<any> {
+    const gmCheck = this.validateGMAccess();
+    if (!gmCheck.allowed) return { error: 'GM access required' };
+
+    try {
+      const gm = (window as any).GuardManagement;
+      if (!gm?.officerManager) {
+        return { error: 'guard-management module not available or not initialized' };
+      }
+
+      if (!params.officerId) return { error: 'officerId is required' };
+
+      const updated = await gm.officerManager.update(params.officerId, params.data);
+      if (!updated) {
+        return { error: `Officer '${params.officerId}' not found or update failed` };
+      }
+
+      return { success: true, officer: updated };
+    } catch (error: any) {
+      return { error: error?.message || String(error) };
+    }
+  }
+
+  /**
+   * Actor Management: Update actor properties (img, name, biography, etc.)
+   */
+  /**
+   * Folder management: Create a folder (and optional parent folder) for Actors
+   */
+  private async handleCreateFolder(params: any): Promise<any> {
+    const gmCheck = this.validateGMAccess();
+    if (!gmCheck.allowed) return { error: 'GM access required' };
+
+    try {
+      this.dataAccess.validateFoundryState();
+      if (!params.name) return { error: 'name is required' };
+
+      const type = params.type || 'Actor';
+
+      // If parentName is given, find or create it first
+      let parentId: string | null = null;
+      if (params.parentName) {
+        let parent = (game.folders as any)?.find(
+          (f: any) => f.name === params.parentName && f.type === type && !f.folder
+        );
+        if (!parent) {
+          parent = await (Folder as any).create({ name: params.parentName, type, folder: null });
+        }
+        parentId = parent.id;
+      }
+
+      // Find or create the target folder
+      let folder = (game.folders as any)?.find(
+        (f: any) => f.name === params.name && f.type === type && (parentId ? f.folder?.id === parentId : !f.folder)
+      );
+      if (!folder) {
+        folder = await (Folder as any).create({ name: params.name, type, folder: parentId });
+      }
+
+      return { success: true, folderId: folder.id, name: folder.name, parentId };
+    } catch (error: any) {
+      return { error: error?.message || String(error) };
+    }
+  }
+
+  /**
+   * Folder management: Move an actor into a folder by folder ID or name path
+   */
+  private async handleMoveActorToFolder(params: any): Promise<any> {
+    const gmCheck = this.validateGMAccess();
+    if (!gmCheck.allowed) return { error: 'GM access required' };
+
+    try {
+      this.dataAccess.validateFoundryState();
+      if (!params.actorId) return { error: 'actorId is required' };
+      if (!params.folderId) return { error: 'folderId is required' };
+
+      const actor = game.actors?.get(params.actorId);
+      if (!actor) return { error: `Actor '${params.actorId}' not found` };
+
+      await (actor as any).update({ folder: params.folderId });
+      return { success: true, actorId: params.actorId, folderId: params.folderId };
+    } catch (error: any) {
+      return { error: error?.message || String(error) };
+    }
+  }
+
+  private async handleCreateActor(params: any): Promise<any> {
+    const gmCheck = this.validateGMAccess();
+    if (!gmCheck.allowed) return { error: 'GM access required' };
+
+    try {
+      this.dataAccess.validateFoundryState();
+
+      if (!params.name) return { error: 'name is required' };
+      if (!params.type) return { error: 'type is required' };
+
+      const actorData: any = {
+        name: params.name,
+        type: params.type,
+      };
+      if (params.img) actorData.img = params.img;
+      if (params.system) actorData.system = params.system;
+
+      const actor = await (Actor as any).create(actorData);
+      return {
+        success: true,
+        actorId: actor.id,
+        name: actor.name,
+        img: actor.img,
+      };
+    } catch (error: any) {
+      return { error: error?.message || String(error) };
+    }
+  }
+
+  /**
+   * Actor Management: Update embedded items on an actor
+   */
+  private async handleUpdateActorItems(params: any): Promise<any> {
+    const gmCheck = this.validateGMAccess();
+    if (!gmCheck.allowed) return { error: 'GM access required' };
+
+    try {
+      this.dataAccess.validateFoundryState();
+
+      if (!params.actorId) return { error: 'actorId is required' };
+      if (!Array.isArray(params.items) || params.items.length === 0) {
+        return { error: 'items array is required' };
+      }
+
+      const actor = game.actors?.get(params.actorId);
+      if (!actor) return { error: `Actor '${params.actorId}' not found` };
+
+      const updated = await (actor as any).updateEmbeddedDocuments('Item', params.items);
+      return { success: true, updated: updated.length };
+    } catch (error: any) {
+      return { error: error?.message || String(error) };
+    }
+  }
+
+  /**
+   * Actor Management: Update an existing actor
+   * Supports `folderPath` param: "Parent/Child" creates nested Actor folders and moves actor there.
+   */
+  private async handleUpdateActor(params: any): Promise<any> {
+    const gmCheck = this.validateGMAccess();
+    if (!gmCheck.allowed) return { error: 'GM access required' };
+
+    try {
+      this.dataAccess.validateFoundryState();
+
+      if (!params.actorId) return { error: 'actorId is required' };
+      if (!params.updates || typeof params.updates !== 'object') {
+        return { error: 'updates object is required' };
+      }
+
+      const actor = game.actors?.get(params.actorId);
+      if (!actor) return { error: `Actor '${params.actorId}' not found` };
+
+      // Resolve folderPath → folder ID (creates folders as needed)
+      if (params.folderPath) {
+        const parts: string[] = (params.folderPath as string).split('/').map((s: string) => s.trim()).filter(Boolean);
+        let parentId: string | null = null;
+        for (const part of parts) {
+          let folder = (game.folders as any)?.find(
+            (f: any) => f.name === part && f.type === 'Actor' && (parentId ? f.folder?.id === parentId : !f.folder)
+          );
+          if (!folder) {
+            folder = await (Folder as any).create({ name: part, type: 'Actor', folder: parentId });
+          }
+          parentId = folder.id;
+        }
+        params.updates.folder = parentId;
+      }
+
+      const updateData: any = { ...params.updates };
+      await (actor as any).update(updateData);
+
+      // Re-fetch to get updated values
+      const updated = game.actors?.get(params.actorId);
+      return {
+        success: true,
+        actorId: params.actorId,
+        name: (updated as any)?.name,
+        img: (updated as any)?.img,
+        folder: (updated as any)?.folder?.id ?? null,
+      };
+    } catch (error: any) {
+      return { error: error?.message || String(error) };
+    }
+  }
+
+  /**
+   * Actor Management: Add actor to the active scene as a token
+   */
+  private async handleAddActorToScene(params: any): Promise<any> {
+    const gmCheck = this.validateGMAccess();
+    if (!gmCheck.allowed) return { error: 'GM access required' };
+
+    try {
+      this.dataAccess.validateFoundryState();
+
+      if (!params.actorId) return { error: 'actorId is required' };
+
+      const scene = (game.scenes as any)?.active;
+      if (!scene) return { error: 'No active scene found' };
+
+      const actor = game.actors?.get(params.actorId);
+      if (!actor) return { error: `Actor '${params.actorId}' not found` };
+
+      // Determine placement position
+      const x = params.x ?? Math.floor(scene.width / 2);
+      const y = params.y ?? Math.floor(scene.height / 2);
+
+      const tokenData = await (actor as any).getTokenDocument({ x, y });
+      const [token] = await (scene as any).createEmbeddedDocuments('Token', [tokenData]);
+
+      return {
+        success: true,
+        tokenId: token.id,
+        actorId: params.actorId,
+        x: token.x,
+        y: token.y,
+      };
+    } catch (error: any) {
+      return { error: error?.message || String(error) };
     }
   }
 }
