@@ -51,6 +51,7 @@ export declare class QueryHandlers {
      * Handle ping request
      */
     private handlePing;
+    private handleReloadFoundry;
     /**
      * Get list of all registered query methods
      */
@@ -226,6 +227,7 @@ export declare class QueryHandlers {
      */
     private handleUpdateWorldItems;
     private handleAddActorItems;
+    private handleDeleteActorItems;
     /**
      * Guard Management: Create Officer
      */
@@ -258,6 +260,14 @@ export declare class QueryHandlers {
      * Actor Management: Update embedded items on an actor
      */
     private handleUpdateActorItems;
+    /**
+     * Daggerheart: Create a new action inside a feature item's system.actions field.
+     * Uses the system's ActionField class to properly initialize the action DataModel.
+     * Params: actorId, itemId, actionData { type, name, range, damage, roll, save, ... }
+     * Returns: { success, actionId } or { error }
+     */
+    private handleCreateItemAction;
+    private handleDeleteItemActions;
     /**
      * Actor Management: Update an existing actor
      * Supports `folderPath` param: "Parent/Child" creates nested Actor folders and moves actor there.

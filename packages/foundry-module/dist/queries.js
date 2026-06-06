@@ -39,6 +39,7 @@ export class QueryHandlers {
         CONFIG.queries[`${modulePrefix}.getWorldInfo`] = this.handleGetWorldInfo.bind(this);
         // Utility queries
         CONFIG.queries[`${modulePrefix}.ping`] = this.handlePing.bind(this);
+        CONFIG.queries[`${modulePrefix}.reloadFoundry`] = this.handleReloadFoundry.bind(this);
         // Phase 2 & 3: Write operation queries
         CONFIG.queries[`${modulePrefix}.createActorFromCompendium`] =
             this.handleCreateActorFromCompendium.bind(this);
@@ -94,6 +95,7 @@ export class QueryHandlers {
             this.handleSearchCharacterItems.bind(this);
         // Item authoring on actor sheets
         CONFIG.queries[`${modulePrefix}.addActorItems`] = this.handleAddActorItems.bind(this);
+        CONFIG.queries[`${modulePrefix}.deleteActorItems`] = this.handleDeleteActorItems.bind(this);
         // World item management
         CONFIG.queries[`${modulePrefix}.createWorldItems`] = this.handleCreateWorldItems.bind(this);
         CONFIG.queries[`${modulePrefix}.listWorldItems`] = this.handleListWorldItems.bind(this);
@@ -116,6 +118,8 @@ export class QueryHandlers {
         CONFIG.queries[`${modulePrefix}.createActor`] = this.handleCreateActor.bind(this);
         CONFIG.queries[`${modulePrefix}.updateActor`] = this.handleUpdateActor.bind(this);
         CONFIG.queries[`${modulePrefix}.updateActorItems`] = this.handleUpdateActorItems.bind(this);
+        CONFIG.queries[`${modulePrefix}.createItemAction`] = this.handleCreateItemAction.bind(this);
+        CONFIG.queries[`${modulePrefix}.deleteItemActions`] = this.handleDeleteItemActions.bind(this);
         CONFIG.queries[`${modulePrefix}.addActorToScene`] = this.handleAddActorToScene.bind(this);
         CONFIG.queries[`${modulePrefix}.createFolder`] = this.handleCreateFolder.bind(this);
         CONFIG.queries[`${modulePrefix}.moveActorToFolder`] = this.handleMoveActorToFolder.bind(this);
@@ -300,6 +304,19 @@ export class QueryHandlers {
             worldId: game.world?.id,
             userId: game.user?.id,
         };
+    }
+    async handleReloadFoundry(_params) {
+        const gmCheck = this.validateGMAccess();
+        if (!gmCheck.allowed)
+            return { error: 'GM access required' };
+        try {
+            // Schedule the reload slightly deferred so the socket response goes out first
+            setTimeout(() => foundry.utils.debouncedReload(), 500);
+            return { success: true, message: 'Foundry reload initiated' };
+        }
+        catch (error) {
+            return { error: error?.message || String(error) };
+        }
     }
     /**
      * Get list of all registered query methods
@@ -1245,6 +1262,28 @@ export class QueryHandlers {
             throw new Error(`Failed to add actor items: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
+    async handleDeleteActorItems(data) {
+        try {
+            const gmCheck = this.validateGMAccess();
+            if (!gmCheck.allowed) {
+                return { error: 'Access denied', success: false };
+            }
+            this.dataAccess.validateFoundryState();
+            if (!data?.actorIdentifier) {
+                throw new Error('actorIdentifier is required');
+            }
+            if (!Array.isArray(data?.itemIds) || data.itemIds.length === 0) {
+                throw new Error('itemIds array is required and must contain at least one entry');
+            }
+            return await this.dataAccess.deleteActorItems({
+                actorIdentifier: data.actorIdentifier,
+                itemIds: data.itemIds,
+            });
+        }
+        catch (error) {
+            throw new Error(`Failed to delete actor items: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
     /**
      * Guard Management: Create Officer
      */
@@ -1446,6 +1485,91 @@ export class QueryHandlers {
                 return { error: `Actor '${params.actorId}' not found` };
             const updated = await actor.updateEmbeddedDocuments('Item', params.items);
             return { success: true, updated: updated.length };
+        }
+        catch (error) {
+            return { error: error?.message || String(error) };
+        }
+    }
+    /**
+     * Daggerheart: Create a new action inside a feature item's system.actions field.
+     * Uses the system's ActionField class to properly initialize the action DataModel.
+     * Params: actorId, itemId, actionData { type, name, range, damage, roll, save, ... }
+     * Returns: { success, actionId } or { error }
+     */
+    async handleCreateItemAction(params) {
+        const gmCheck = this.validateGMAccess();
+        if (!gmCheck.allowed)
+            return { error: 'GM access required' };
+        try {
+            this.dataAccess.validateFoundryState();
+            if (!params.actorId)
+                return { error: 'actorId is required' };
+            if (!params.itemId)
+                return { error: 'itemId is required' };
+            if (!params.actionData)
+                return { error: 'actionData is required' };
+            if (!params.actionData.type)
+                return { error: 'actionData.type is required (e.g. "attack")' };
+            const actor = game.actors?.get(params.actorId);
+            if (!actor)
+                return { error: `Actor '${params.actorId}' not found` };
+            const item = actor.items.get(params.itemId);
+            if (!item)
+                return { error: `Item '${params.itemId}' not found on actor '${params.actorId}'` };
+            // Get the action class from the Daggerheart system API
+            const actionsTypes = game.system?.api?.models?.actions?.actionsTypes;
+            if (!actionsTypes)
+                return { error: 'Daggerheart actionsTypes API not available' };
+            const cls = actionsTypes[params.actionData.type];
+            if (!cls)
+                return { error: `Unknown action type '${params.actionData.type}'. Valid types: ${Object.keys(actionsTypes).join(', ')}` };
+            // Generate a fresh Foundry ID and build the action
+            const actionId = foundry.utils.randomID();
+            const actionData = { ...params.actionData, _id: actionId, systemPath: params.actionData.systemPath ?? 'actions' };
+            // Create a proper DataModel instance so cleanData validation passes
+            const actionInstance = new cls(actionData, { parent: item });
+            // Merge with existing actions and update the item
+            const existingActions = item.system.actions?.toObject?.() ?? {};
+            await item.update({ 'system.actions': { ...existingActions, [actionId]: actionInstance.toObject() } });
+            return { success: true, actionId };
+        }
+        catch (error) {
+            return { error: error?.message || String(error) };
+        }
+    }
+    async handleDeleteItemActions(params) {
+        const gmCheck = this.validateGMAccess();
+        if (!gmCheck.allowed)
+            return { error: 'GM access required' };
+        try {
+            this.dataAccess.validateFoundryState();
+            if (!params.actorId)
+                return { error: 'actorId is required' };
+            if (!params.itemId)
+                return { error: 'itemId is required' };
+            const actor = game.actors?.get(params.actorId);
+            if (!actor)
+                return { error: `Actor '${params.actorId}' not found` };
+            const item = actor.items.get(params.itemId);
+            if (!item)
+                return { error: `Item '${params.itemId}' not found on actor '${params.actorId}'` };
+            const existingActions = item.system.actions?.toObject?.() ?? {};
+            const existingIds = Object.keys(existingActions);
+            let newActions;
+            if (params.clearAll) {
+                newActions = {};
+            }
+            else if (Array.isArray(params.actionIds) && params.actionIds.length > 0) {
+                newActions = { ...existingActions };
+                for (const id of params.actionIds)
+                    delete newActions[id];
+            }
+            else {
+                return { error: 'Provide actionIds array or clearAll: true' };
+            }
+            await item.update({ 'system.actions': newActions });
+            const removed = existingIds.length - Object.keys(newActions).length;
+            return { success: true, removed, remaining: Object.keys(newActions).length };
         }
         catch (error) {
             return { error: error?.message || String(error) };

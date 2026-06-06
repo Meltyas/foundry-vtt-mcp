@@ -49,6 +49,14 @@ export class SceneTools {
           properties: {},
         },
       },
+      {
+        name: 'reload-foundry',
+        description: 'Reload the Foundry VTT application (triggers a full page reload for all connected clients). Use after deploying module updates or when a fresh state is needed.',
+        inputSchema: {
+          type: 'object',
+          properties: {},
+        },
+      },
     ];
   }
 
@@ -190,6 +198,20 @@ export class SceneTools {
     });
 
     return summary;
+  }
+
+  async handleReloadFoundry(_args: any): Promise<any> {
+    this.logger.info('Reloading Foundry VTT');
+
+    try {
+      const result = await this.foundryClient.query('foundry-mcp-bridge.reloadFoundry');
+      return result;
+    } catch (error) {
+      this.logger.error('Failed to reload Foundry', error);
+      throw new Error(
+        `Failed to reload Foundry: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
   }
 
   private formatWorldResponse(worldData: any): any {

@@ -1034,6 +1034,9 @@ async function startBackend() {
                                 case 'get-world-info':
                                     result = await sceneTools.handleGetWorldInfo(args);
                                     break;
+                                case 'reload-foundry':
+                                    result = await sceneTools.handleReloadFoundry(args);
+                                    break;
                                 // Actor creation tools
                                 case 'create-actor-from-compendium':
                                     result = await actorCreationTools.handleCreateActorFromCompendium(args);
@@ -1150,6 +1153,9 @@ async function startBackend() {
                                     break;
                                 case 'guard-patrols-create':
                                     result = await guardManagementTools.handlePatrolsCreate(args);
+                                    break;
+                                case 'guard-patrols-update':
+                                    result = await guardManagementTools.handlePatrolsUpdate(args);
                                     break;
                                 case 'guard-patrols-delete':
                                     result = await guardManagementTools.handlePatrolsDelete(args);
@@ -1289,6 +1295,42 @@ async function startBackend() {
                                 case 'guard-phase-reports-search':
                                     result = await guardManagementTools.handlePhaseReportsSearch(args);
                                     break;
+                                case 'guard-decisions-list':
+                                    result = await guardManagementTools.handleDecisionsList(args);
+                                    break;
+                                case 'guard-decisions-create':
+                                    result = await guardManagementTools.handleDecisionsCreate(args);
+                                    break;
+                                case 'guard-decisions-update':
+                                    result = await guardManagementTools.handleDecisionsUpdate(args);
+                                    break;
+                                case 'guard-decisions-delete':
+                                    result = await guardManagementTools.handleDecisionsDelete(args);
+                                    break;
+                                case 'guard-decision-sections-list':
+                                    result = await guardManagementTools.handleDecisionSectionsList(args);
+                                    break;
+                                case 'guard-decision-sections-create':
+                                    result = await guardManagementTools.handleDecisionSectionsCreate(args);
+                                    break;
+                                case 'guard-decision-sections-update':
+                                    result = await guardManagementTools.handleDecisionSectionsUpdate(args);
+                                    break;
+                                case 'guard-decision-sections-delete':
+                                    result = await guardManagementTools.handleDecisionSectionsDelete(args);
+                                    break;
+                                case 'guard-abilities-list':
+                                    result = await guardManagementTools.handleAbilitiesList(args);
+                                    break;
+                                case 'guard-abilities-create':
+                                    result = await guardManagementTools.handleAbilitiesCreate(args);
+                                    break;
+                                case 'guard-abilities-update':
+                                    result = await guardManagementTools.handleAbilitiesUpdate(args);
+                                    break;
+                                case 'guard-abilities-delete':
+                                    result = await guardManagementTools.handleAbilitiesDelete(args);
+                                    break;
                                 case 'create-actor-folder':
                                     result = await actorManagementTools.handleCreateActorFolder(args);
                                     break;
@@ -1297,6 +1339,12 @@ async function startBackend() {
                                     break;
                                 case 'update-actor-items':
                                     result = await actorManagementTools.handleUpdateActorItems(args);
+                                    break;
+                                case 'create-item-action':
+                                    result = await actorManagementTools.handleCreateItemAction(args);
+                                    break;
+                                case 'delete-item-actions':
+                                    result = await actorManagementTools.handleDeleteItemActions(args);
                                     break;
                                 case 'create-actor':
                                     result = await actorManagementTools.handleCreateActor(args);
