@@ -49,6 +49,7 @@ export class QueryHandlers {
     // Utility queries
     CONFIG.queries[`${modulePrefix}.ping`] = this.handlePing.bind(this);
     CONFIG.queries[`${modulePrefix}.reloadFoundry`] = this.handleReloadFoundry.bind(this);
+    CONFIG.queries[`${modulePrefix}.fixItemActions`] = this.handleFixItemActions.bind(this);
 
     // Phase 2 & 3: Write operation queries
     CONFIG.queries[`${modulePrefix}.createActorFromCompendium`] =
@@ -143,6 +144,8 @@ export class QueryHandlers {
     CONFIG.queries[`${modulePrefix}.updateActorItems`] = this.handleUpdateActorItems.bind(this);
     CONFIG.queries[`${modulePrefix}.createItemAction`] = this.handleCreateItemAction.bind(this);
     CONFIG.queries[`${modulePrefix}.deleteItemActions`] = this.handleDeleteItemActions.bind(this);
+    CONFIG.queries[`${modulePrefix}.getItemActions`] = this.handleGetItemActions.bind(this);
+    CONFIG.queries[`${modulePrefix}.repairItemActions`] = this.handleRepairItemActions.bind(this);
     CONFIG.queries[`${modulePrefix}.addActorToScene`] = this.handleAddActorToScene.bind(this);
     CONFIG.queries[`${modulePrefix}.createFolder`] = this.handleCreateFolder.bind(this);
     CONFIG.queries[`${modulePrefix}.moveActorToFolder`] = this.handleMoveActorToFolder.bind(this);
@@ -383,6 +386,53 @@ export class QueryHandlers {
       worldId: game.world?.id,
       userId: game.user?.id,
     };
+  }
+
+  private async handleFixItemActions(params: any): Promise<any> {
+    const gmCheck = this.validateGMAccess();
+    if (!gmCheck.allowed) return { error: 'GM access required' };
+
+    try {
+      const { actorId, itemId } = params;
+      if (!actorId || !itemId) return { error: 'actorId and itemId are required' };
+
+      const actor = (game as any).actors?.get(actorId);
+      if (!actor) return { error: `Actor '${actorId}' not found` };
+
+      if (!actor.items.get(itemId)) return { error: `Item '${itemId}' not found on actor` };
+
+      // Use actor.updateEmbeddedDocuments to update the Item at the Actor level.
+      // diff:false forces a direct replacement instead of deep-merge, bypassing the
+      // EmbeddedCollectionField validation on system.actions that rejects deletion keys.
+      // noHooks:true skips Daggerheart's _onUpdate hook that crashes on 'triggers'.
+      await (actor as any).updateEmbeddedDocuments(
+        'Item',
+        [{ _id: itemId, 'system.actions': {} }],
+        { diff: false, noHooks: true }
+      );
+
+      // Also fix token actors on the active scene (unlinked tokens have their own ActorDelta)
+      for (const tokenActor of this.getSceneTokenActors(actorId)) {
+        try {
+          if (tokenActor.items.get(itemId)) {
+            await (tokenActor as any).updateEmbeddedDocuments(
+              'Item',
+              [{ _id: itemId, 'system.actions': {} }],
+              { diff: false, noHooks: true }
+            );
+          }
+        } catch { /* ignore individual token failures */ }
+      }
+
+      const baseItem = actor.items.get(itemId);
+      const remaining = baseItem
+        ? Object.keys((baseItem.system as any).actions?.toObject?.() ?? {}).length
+        : -1;
+
+      return { success: true, itemId, remaining, message: `actions cleared (remaining: ${remaining})` };
+    } catch (error: any) {
+      return { error: error?.message || String(error) };
+    }
   }
 
   private async handleReloadFoundry(_params: any): Promise<any> {
@@ -1872,10 +1922,24 @@ export class QueryHandlers {
   }
 
   /**
+   * Returns all synthetic token actors on the active scene that share the given base actorId.
+   * Covers both linked tokens (which proxy the base actor) and unlinked tokens (ActorDelta).
+   */
+  private getSceneTokenActors(actorId: string): any[] {
+    const scene = (game as any).scenes?.active;
+    if (!scene) return [];
+    const actors: any[] = [];
+    for (const token of scene.tokens) {
+      if (token.actorId === actorId && token.actor) {
+        actors.push(token.actor);
+      }
+    }
+    return actors;
+  }
+
+  /**
    * Daggerheart: Create a new action inside a feature item's system.actions field.
-   * Uses the system's ActionField class to properly initialize the action DataModel.
-   * Params: actorId, itemId, actionData { type, name, range, damage, roll, save, ... }
-   * Returns: { success, actionId } or { error }
+   * Updates the base actor AND all token actors on the active scene (handles unlinked tokens).
    */
   private async handleCreateItemAction(params: any): Promise<any> {
     const gmCheck = this.validateGMAccess();
@@ -1889,29 +1953,52 @@ export class QueryHandlers {
       if (!params.actionData) return { error: 'actionData is required' };
       if (!params.actionData.type) return { error: 'actionData.type is required (e.g. "attack")' };
 
-      const actor = (game as any).actors?.get(params.actorId);
-      if (!actor) return { error: `Actor '${params.actorId}' not found` };
-
-      const item = actor.items.get(params.itemId);
-      if (!item) return { error: `Item '${params.itemId}' not found on actor '${params.actorId}'` };
-
-      // Get the action class from the Daggerheart system API
       const actionsTypes = (game as any).system?.api?.models?.actions?.actionsTypes;
       if (!actionsTypes) return { error: 'Daggerheart actionsTypes API not available' };
 
       const cls = actionsTypes[params.actionData.type];
       if (!cls) return { error: `Unknown action type '${params.actionData.type}'. Valid types: ${Object.keys(actionsTypes).join(', ')}` };
 
-      // Generate a fresh Foundry ID and build the action
+      // Anti-duplicate guard: refuse if the feature already has ≥1 action.
+      // Deletion is broken in Daggerheart V14 — every create ADDS to existing actions.
+      // If duplicates exist, use repair-item-actions first, then create-item-action.
+      const guardActor = (game as any).actors?.get(params.actorId);
+      if (guardActor) {
+        const guardItem = guardActor.items.get(params.itemId);
+        if (guardItem) {
+          const existingCount = Object.keys((guardItem.system as any).actions?.toObject?.() ?? {}).length;
+          if (existingCount >= 1) {
+            return {
+              error: `Feature '${guardItem.name}' already has ${existingCount} action(s). ` +
+                     `Use repair-item-actions to clean it first, then create-item-action. ` +
+                     `Creating on top of existing actions causes duplicates (Daggerheart V14 deletion is broken).`
+            };
+          }
+        }
+      }
+
       const actionId = (foundry as any).utils.randomID();
       const actionData = { ...params.actionData, _id: actionId, systemPath: params.actionData.systemPath ?? 'actions' };
 
-      // Create a proper DataModel instance so cleanData validation passes
-      const actionInstance = new cls(actionData, { parent: item });
+      // Helper: apply action to a single actor instance
+      const applyToActor = async (actor: any) => {
+        const item = actor.items.get(params.itemId);
+        if (!item) return;
+        const actionInstance = new cls(actionData, { parent: item });
+        const existingActions = (item.system as any).actions?.toObject?.() ?? {};
+        await item.update({ 'system.actions': { ...existingActions, [actionId]: actionInstance.toObject() } });
+      };
 
-      // Merge with existing actions and update the item
-      const existingActions = (item.system as any).actions?.toObject?.() ?? {};
-      await item.update({ 'system.actions': { ...existingActions, [actionId]: actionInstance.toObject() } });
+      // Update base actor
+      const baseActor = (game as any).actors?.get(params.actorId);
+      if (!baseActor) return { error: `Actor '${params.actorId}' not found` };
+      if (!baseActor.items.get(params.itemId)) return { error: `Item '${params.itemId}' not found on actor '${params.actorId}'` };
+      await applyToActor(baseActor);
+
+      // Update all scene token actors (handles unlinked tokens with their own ActorDelta)
+      for (const tokenActor of this.getSceneTokenActors(params.actorId)) {
+        try { await applyToActor(tokenActor); } catch { /* token may not have this item */ }
+      }
 
       return { success: true, actionId };
     } catch (error: any) {
@@ -1929,28 +2016,199 @@ export class QueryHandlers {
       if (!params.actorId) return { error: 'actorId is required' };
       if (!params.itemId) return { error: 'itemId is required' };
 
-      const actor = (game as any).actors?.get(params.actorId);
-      if (!actor) return { error: `Actor '${params.actorId}' not found` };
-
-      const item = actor.items.get(params.itemId);
-      if (!item) return { error: `Item '${params.itemId}' not found on actor '${params.actorId}'` };
-
-      const existingActions = (item.system as any).actions?.toObject?.() ?? {};
-      const existingIds = Object.keys(existingActions);
-
-      let newActions: Record<string, any>;
-      if (params.clearAll) {
-        newActions = {};
-      } else if (Array.isArray(params.actionIds) && params.actionIds.length > 0) {
-        newActions = { ...existingActions };
-        for (const id of params.actionIds) delete newActions[id];
-      } else {
+      if (!params.clearAll && !(Array.isArray(params.actionIds) && params.actionIds.length > 0)) {
         return { error: 'Provide actionIds array or clearAll: true' };
       }
 
-      await item.update({ 'system.actions': newActions });
-      const removed = existingIds.length - Object.keys(newActions).length;
-      return { success: true, removed, remaining: Object.keys(newActions).length };
+      // Helper: delete actions from a single actor instance.
+      // Bypasses Daggerheart hooks (which throw on 'triggers') by building the remaining
+      // actions object and writing it directly with diff:false + recursive:false.
+      const clearFromActor = async (actor: any): Promise<number> => {
+        const item = actor.items.get(params.itemId);
+        if (!item) return 0;
+        const existingActions = (item.system as any).actions?.toObject?.() ?? {};
+        const idsToDelete = params.clearAll
+          ? Object.keys(existingActions)
+          : (params.actionIds as string[]).filter((id: string) => id in existingActions);
+        if (idsToDelete.length === 0) return 0;
+
+        if (params.clearAll) {
+          // Use actor.updateEmbeddedDocuments with diff:false + noHooks:true.
+          // diff:false prevents Foundry from computing a diff (which would generate
+          // "-=id" deletion keys that crash Daggerheart's _onUpdate hook).
+          // noHooks:true bypasses external hook callbacks.
+          // This is the same approach used in handleFixItemActions which clears
+          // system.actions reliably on both corrupt and live items.
+          await (actor as any).updateEmbeddedDocuments(
+            'Item',
+            [{ _id: params.itemId, 'system.actions': {} }],
+            { diff: false, noHooks: true }
+          );
+          return idsToDelete.length;
+        }
+
+        // Selective delete: deletion-key syntax.
+        // Daggerheart's _preUpdate crashes when deletion keys are present:
+        // it does this.actions.get(key).triggers where key is already removed from
+        // the TypedObjectField Map → get() returns undefined → undefined.triggers → crash.
+        // Fix: patch _preUpdate on the INSTANCE (shadows prototype) to swallow the crash
+        // and return undefined (= "proceed"). The LevelDB write happens after _preUpdate,
+        // so swallowing the crash here still persists the deletion to the database.
+        const deleteUpdate: Record<string, null> = {};
+        for (const id of idsToDelete) deleteUpdate[`system.actions.-=${id}`] = null;
+
+        // Patch _preUpdate on the ITEM instance (DHFeature is an Item Document subclass).
+        // DHFeature._preUpdate accesses changed.system.actions and calls
+        // this.system.actions.get(key) which returns undefined for already-deleted keys → crash.
+        // Wrapping in try/catch and returning undefined lets the update proceed.
+        const origPreUpdate = (item as any)._preUpdate;
+        (item as any)._preUpdate = async (...args: any[]) => {
+          try { if (origPreUpdate) return await origPreUpdate.apply(item, args); }
+          catch { return undefined; /* let update proceed despite Daggerheart trigger crash */ }
+        };
+        try {
+          await item.update(deleteUpdate, { noHooks: true } as any);
+        } finally {
+          if (origPreUpdate !== undefined) (item as any)._preUpdate = origPreUpdate;
+          else delete (item as any)._preUpdate;
+        }
+        return idsToDelete.length;
+      };
+
+      const baseActor = (game as any).actors?.get(params.actorId);
+      if (!baseActor) return { error: `Actor '${params.actorId}' not found` };
+
+      const removedBase = await clearFromActor(baseActor);
+
+      // Also clear from all scene token actors (handles unlinked tokens with their own ActorDelta)
+      for (const tokenActor of this.getSceneTokenActors(params.actorId)) {
+        try { await clearFromActor(tokenActor); } catch { /* ignore */ }
+      }
+
+      const baseItem = baseActor.items.get(params.itemId);
+      const remaining = baseItem ? Object.keys((baseItem.system as any).actions?.toObject?.() ?? {}).length : 0;
+      return { success: true, removed: removedBase, remaining };
+    } catch (error: any) {
+      return { error: error?.message || String(error) };
+    }
+  }
+
+  /**
+   * Daggerheart: Fix duplicate actions by deleting the item and recreating it with one action.
+   * Deletion via update API is broken in Daggerheart V14 (the devs even have a comment:
+   * "Does not work. Unsure why. It worked in v13"). The only reliable approach is:
+   * 1. Read the full item data (toObject)
+   * 2. Keep only the first action in system.actions
+   * 3. Delete the item (deleteEmbeddedDocuments)
+   * 4. Recreate with the same _id and cleaned data (createEmbeddedDocuments)
+   * Preserving _id ensures any existing scene tokens keep their reference to the item.
+   */
+  private async handleRepairItemActions(params: any): Promise<any> {
+    const gmCheck = this.validateGMAccess();
+    if (!gmCheck.allowed) return { error: 'GM access required' };
+
+    try {
+      this.dataAccess.validateFoundryState();
+      if (!params.actorId) return { error: 'actorId is required' };
+      if (!params.itemId)  return { error: 'itemId is required' };
+
+      const repairOnActor = async (actor: any) => {
+        const item = actor.items.get(params.itemId);
+        if (!item) return null;
+
+        const itemObj = item.toObject() as any;
+        const rawActions = itemObj.system?.actions ?? {};
+        const actionIds = Object.keys(rawActions);
+        if (actionIds.length === 0) return { alreadyClean: true };
+
+        // Keep only the first action, discard duplicates.
+        // IMPORTANT: always store the action under its own _id as the Map key.
+        // Daggerheart renders action buttons with UUID "Action.{action._id}".
+        // If the outer key differs from _id (e.g. "0" vs "KQoFpGHN3Hm7iJ2T"),
+        // fromUuid calls item.system.actions.get(_id) → null → ".sheet" crash on right-click.
+        const firstKey = actionIds[0];
+        const firstActionData = rawActions[firstKey];
+        const canonicalKey = (firstActionData as any)?._id ?? firstKey;
+        const hasMismatch = canonicalKey !== firstKey;
+
+        // Skip if already clean: exactly 1 action AND no key mismatch AND no force override
+        if (actionIds.length <= 1 && !hasMismatch && !params.force) return { alreadyClean: true };
+        const newItemData = (foundry as any).utils.deepClone(itemObj);
+        newItemData.system.actions = { [canonicalKey]: firstActionData };
+
+        // Delete the bloated item (or the single item if force=true)
+        await actor.deleteEmbeddedDocuments('Item', [params.itemId]);
+
+        // Recreate with the same _id — Foundry V14 honours the _id in createEmbeddedDocuments
+        const created = await actor.createEmbeddedDocuments('Item', [newItemData]);
+        const newId = created[0]?.id ?? created[0]?._id ?? params.itemId;
+        return { newId, removed: actionIds.length - 1, canonicalKey, originalKey: firstKey };
+      };
+
+      const baseActor = (game as any).actors?.get(params.actorId);
+      if (!baseActor) return { error: `Actor '${params.actorId}' not found` };
+      if (!baseActor.items.get(params.itemId)) return { error: `Item '${params.itemId}' not found` };
+
+      const result = await repairOnActor(baseActor);
+
+      for (const tokenActor of this.getSceneTokenActors(params.actorId)) {
+        try { await repairOnActor(tokenActor); } catch { /* ignore token failures */ }
+      }
+
+      return { success: true, itemId: params.itemId, ...result };
+    } catch (error: any) {
+      return { error: error?.message || String(error) };
+    }
+  }
+
+  /**
+   * Daggerheart: Read all current actions on a feature item directly from Foundry memory.
+   * Returns the real action IDs and names — reliable unlike get-character-entity which
+   * always serializes system.actions as {}.
+   * Use this before delete-item-actions to discover which IDs to remove.
+   */
+  private async handleGetItemActions(params: any): Promise<any> {
+    const gmCheck = this.validateGMAccess();
+    if (!gmCheck.allowed) return { error: 'GM access required' };
+
+    try {
+      this.dataAccess.validateFoundryState();
+      if (!params.actorId) return { error: 'actorId is required' };
+      if (!params.itemId)  return { error: 'itemId is required' };
+
+      const actor = (game as any).actors?.get(params.actorId);
+      if (!actor) return { error: `Actor '${params.actorId}' not found` };
+      const item = actor.items.get(params.itemId);
+      if (!item) return { error: `Item '${params.itemId}' not found` };
+
+      // item.system.actions is a TypedObjectField — may be Map or plain object
+      // Also read via toObject() to get the stored _id inside each action (may differ from Map key)
+      const rawActions = (item.system as any)?.actions ?? {};
+      const storedObj: Record<string, any> = typeof rawActions?.toObject === 'function'
+        ? rawActions.toObject()
+        : (rawActions instanceof Map ? Object.fromEntries(rawActions) : { ...rawActions });
+
+      const actions: Record<string, any> = {};
+      if (rawActions instanceof Map) {
+        rawActions.forEach((v: any, k: string) => {
+          const internalId = v?.id ?? v?._id;
+          actions[k] = { name: v?.name, type: v?.type, internalId, keyMatchesId: k === internalId };
+        });
+      } else {
+        for (const [k, v] of Object.entries(storedObj)) {
+          const live = typeof rawActions?.get === 'function' ? rawActions.get(k) : (rawActions as any)[k];
+          const internalId = (live as any)?.id ?? (live as any)?._id ?? (v as any)?._id ?? k;
+          actions[k] = { name: (live as any)?.name ?? (v as any)?.name, type: (live as any)?.type ?? (v as any)?.type, internalId, keyMatchesId: k === internalId };
+        }
+      }
+
+      return {
+        itemId: params.itemId,
+        itemName: item.name,
+        count: Object.keys(actions).length,
+        actionIds: Object.keys(actions),
+        actions,
+      };
     } catch (error: any) {
       return { error: error?.message || String(error) };
     }

@@ -72,11 +72,11 @@ export const DAGGERHEART_BUILD_TYPES: DaggerheartItemType[] = [
  * Paths use dot notation relative to actor.system
  */
 export const DAGGERHEART_DATA_PATHS = {
-  // Character resources
-  hp: 'hp.value',
-  hpMax: 'hp.max',
-  stress: 'stress.value',
-  stressMax: 'stress.max',
+  // Character resources (characters use hp/stress/hope directly; adversaries use resources.hitPoints/stress)
+  hp: 'resources.hitPoints.value',
+  hpMax: 'resources.hitPoints.max',
+  stress: 'resources.stress.value',
+  stressMax: 'resources.stress.max',
   hope: 'hope.value',
   hopeMax: 'hope.max',
 

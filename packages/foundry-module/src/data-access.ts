@@ -604,9 +604,10 @@ class PersistentCreatureIndex {
     } else if (gameSystem === 'cosmere-rpg') {
       return await this.buildCosmereRpgIndex(force);
     } else {
-      throw new Error(
-        `Enhanced creature index not supported for system: ${gameSystem}. Only D&D 5e, Pathfinder 2e, and Cosmere RPG are currently supported.`
+      console.log(
+        `[${this.moduleId}] Enhanced creature index not supported for system: ${gameSystem}. Skipping.`
       );
+      return [];
     }
   }
 
@@ -4410,6 +4411,47 @@ export class FoundryDataAccess {
       this.auditLog(
         'addActorItems',
         { actorIdentifier, actorId: actor.id, count: payload.length },
+        'failure',
+        error instanceof Error ? error.message : 'Unknown error'
+      );
+      throw error;
+    }
+  }
+
+  async deleteActorItems(params: {
+    actorIdentifier: string;
+    itemIds: string[];
+  }): Promise<{ actorId: string; actorName: string; deleted: string[] }> {
+    this.validateFoundryState();
+
+    const { actorIdentifier, itemIds } = params;
+
+    if (!actorIdentifier) {
+      throw new Error('actorIdentifier is required');
+    }
+    if (!Array.isArray(itemIds) || itemIds.length === 0) {
+      throw new Error('itemIds array is required and must contain at least one entry');
+    }
+
+    const actor = this.findActorByIdentifier(actorIdentifier);
+    if (!actor) {
+      throw new Error(`Actor not found: ${actorIdentifier}`);
+    }
+
+    try {
+      await actor.deleteEmbeddedDocuments('Item', itemIds);
+
+      this.auditLog(
+        'deleteActorItems',
+        { actorIdentifier, actorId: actor.id, count: itemIds.length },
+        'success'
+      );
+
+      return { actorId: actor.id, actorName: actor.name, deleted: itemIds };
+    } catch (error) {
+      this.auditLog(
+        'deleteActorItems',
+        { actorIdentifier, actorId: actor.id, count: itemIds.length },
         'failure',
         error instanceof Error ? error.message : 'Unknown error'
       );

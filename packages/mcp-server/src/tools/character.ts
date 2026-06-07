@@ -145,16 +145,22 @@ export class CharacterTools {
           'Manage Item documents in Foundry VTT. Specify the operation with "action":\n' +
           '- "create": Create world-level Items in the sidebar (not actor-attached). Good for reusable libraries. GM-only.\n' +
           '- "list": List world-level Items with optional type/folder/name filters.\n' +
+          '- "get": Get full data (including system/actions) for a single world Item by ID.\n' +
           '- "update": Update existing world-level Items by ID. GM-only.\n' +
-          '- "add-to-actor": Create and attach Items directly to an existing actor. GM-only.',
+          '- "add-to-actor": Create and attach Items directly to an existing actor. GM-only.\n' +
+          '- "delete-from-actor": Delete embedded items from an actor by item ID. GM-only.',
         inputSchema: {
           type: 'object',
           properties: {
             action: {
               type: 'string',
-              enum: ['create', 'list', 'update', 'add-to-actor'],
+              enum: ['create', 'list', 'get', 'update', 'add-to-actor', 'delete-from-actor'],
               description:
-                'Operation to perform: "create" world items, "list" world items, "update" world items by id, or "add-to-actor" to attach items to an actor.',
+                'Operation to perform: "create" world items, "list" world items, "get" full data for one item by ID, "update" world items by id, "add-to-actor" to attach items to an actor, or "delete-from-actor" to remove embedded items from an actor.',
+            },
+            itemId: {
+              type: 'string',
+              description: 'For "get": ID of the world Item to retrieve.',
             },
             items: {
               type: 'array',
@@ -221,7 +227,13 @@ export class CharacterTools {
             },
             actorIdentifier: {
               type: 'string',
-              description: 'For "add-to-actor": actor name or ID to receive the items.',
+              description: 'For "add-to-actor" and "delete-from-actor": actor name or ID.',
+            },
+            itemIds: {
+              type: 'array',
+              items: { type: 'string' },
+              minItems: 1,
+              description: 'For "delete-from-actor": array of embedded item IDs to delete from the actor.',
             },
           },
           required: ['action'],
@@ -529,6 +541,36 @@ export class CharacterTools {
     }
   }
 
+  async handleDeleteActorItems(args: any): Promise<any> {
+    const schema = z.object({
+      actorIdentifier: z.string().min(1, 'Actor identifier cannot be empty'),
+      itemIds: z.array(z.string().min(1)).min(1, 'At least one item ID is required'),
+    });
+
+    const { actorIdentifier, itemIds } = schema.parse(args);
+
+    this.logger.info('Deleting items from actor', { actorIdentifier, itemIds });
+
+    try {
+      const result = await this.foundryClient.query('foundry-mcp-bridge.deleteActorItems', {
+        actorIdentifier,
+        itemIds,
+      });
+
+      this.logger.debug('Successfully deleted actor items', {
+        actorName: result.actorName,
+        deleted: result.deleted,
+      });
+
+      return result;
+    } catch (error) {
+      this.logger.error('Failed to delete actor items', error);
+      throw new Error(
+        `Failed to delete items from "${actorIdentifier}": ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  }
+
   async handleUpdateWorldItems(args: any): Promise<any> {
     const updateEntrySchema = z.object({
       id: z.string().min(1, 'Item id cannot be empty'),
@@ -633,18 +675,43 @@ export class CharacterTools {
     }
   }
 
+  async handleGetWorldItem(args: any): Promise<any> {
+    const schema = z.object({
+      itemId: z.string().min(1, 'itemId cannot be empty'),
+    });
+
+    const { itemId } = schema.parse(args);
+
+    this.logger.info('Getting world item', { itemId });
+
+    try {
+      const result = await this.foundryClient.query('foundry-mcp-bridge.getWorldItem', { id: itemId });
+
+      this.logger.debug('Successfully retrieved world item', { id: result?.id, name: result?.name });
+
+      return result;
+    } catch (error) {
+      this.logger.error('Failed to get world item', error);
+      throw new Error(`Failed to get world item "${itemId}": ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
   async handleManageWorldItems(args: any): Promise<any> {
-    const { action } = z.object({ action: z.enum(['create', 'list', 'update', 'add-to-actor']) }).parse(args);
+    const { action } = z.object({ action: z.enum(['create', 'list', 'get', 'update', 'add-to-actor', 'delete-from-actor']) }).parse(args);
 
     switch (action) {
       case 'create':
         return this.handleCreateWorldItems(args);
       case 'list':
         return this.handleListWorldItems(args);
+      case 'get':
+        return this.handleGetWorldItem(args);
       case 'update':
         return this.handleUpdateWorldItems(args);
       case 'add-to-actor':
         return this.handleAddActorItems(args);
+      case 'delete-from-actor':
+        return this.handleDeleteActorItems(args);
     }
   }
 

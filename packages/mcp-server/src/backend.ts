@@ -1937,8 +1937,23 @@ async function startBackend(): Promise<void> {
 
                   break;
 
+                case 'fix-item-actions':
+                  result = await actorManagementTools.handleFixItemActions(args);
+
+                  break;
+
+                case 'repair-item-actions':
+                  result = await actorManagementTools.handleRepairItemActions(args);
+
+                  break;
+
                 case 'create-item-action':
                   result = await actorManagementTools.handleCreateItemAction(args);
+
+                  break;
+
+                case 'get-item-actions':
+                  result = await actorManagementTools.handleGetItemActions(args);
 
                   break;
 

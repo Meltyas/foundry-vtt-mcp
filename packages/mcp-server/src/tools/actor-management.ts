@@ -102,6 +102,82 @@ export class ActorManagementTools {
         },
       },
       {
+        name: 'fix-item-actions',
+        description:
+          'Fix a Daggerheart feature item with corrupt/invalid actions (Action._id undefined error). Clears system.actions via actor._source, bypassing embedded-collection validation. Use when an item fails to initialize on Foundry load.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorId: { type: 'string', description: 'ID of the actor' },
+            itemId: { type: 'string', description: 'ID of the corrupt feature item' },
+          },
+          required: ['actorId', 'itemId'],
+        },
+      },
+      {
+        name: 'create-item-action',
+        description:
+          'Create an attack/action inside a Daggerheart feature item\'s Actions tab. Use this instead of update-actor-items when adding a clickable attack roll to a feature. Requires actorId, itemId, and actionData with type ("attack"), name, range ("veryClose"|"close"|"far"), and damage.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorId: { type: 'string', description: 'ID of the actor' },
+            itemId: { type: 'string', description: 'ID of the feature item to add the action to' },
+            actionData: {
+              type: 'object',
+              description: 'Action configuration. Required: type ("attack"), name, range. Optional: damage parts, roll config, save config.',
+              additionalProperties: true,
+            },
+          },
+          required: ['actorId', 'itemId', 'actionData'],
+        },
+      },
+      {
+        name: 'repair-item-actions',
+        description:
+          'Fix duplicate actions on a Daggerheart feature item by deleting the item and recreating it with exactly one action. Use when a feature has multiple identical attack entries. Preserves item _id, name, description and all other data. Deletion via update API is broken in Daggerheart V14. Pass force:true to force recreate even if the item already has only 1 action (use to fix key/id mismatches that cause ".sheet null" crashes).',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorId: { type: 'string', description: 'ID of the actor' },
+            itemId: { type: 'string', description: 'ID of the feature item with duplicate actions' },
+            force: { type: 'boolean', description: 'If true, recreate the item even if it already has ≤1 action (fixes Map key vs action._id mismatches)' },
+          },
+          required: ['actorId', 'itemId'],
+        },
+      },
+      {
+        name: 'get-item-actions',
+        description:
+          'Read the real action IDs currently on a Daggerheart feature item directly from Foundry memory. Use this before delete-item-actions to discover which IDs exist (get-character-entity does NOT serialize system.actions reliably).',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorId: { type: 'string', description: 'ID of the actor' },
+            itemId: { type: 'string', description: 'ID of the feature item' },
+          },
+          required: ['actorId', 'itemId'],
+        },
+      },
+      {
+        name: 'delete-item-actions',
+        description:
+          'Delete specific attack actions from a Daggerheart feature item by ID. Pass actionIds array with the IDs to remove. Use get-item-actions first to list current IDs, then pass all EXCEPT the one you want to keep. Do NOT use clearAll — it uses a different code path that does not persist to LevelDB.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            actorId: { type: 'string', description: 'ID of the actor' },
+            itemId: { type: 'string', description: 'ID of the feature item' },
+            actionIds: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'IDs of specific actions to delete. Pass all IDs except the one to keep.',
+            },
+          },
+          required: ['actorId', 'itemId', 'actionIds'],
+        },
+      },
+      {
         name: 'update-actor',
         description:
           'Update properties of an existing Foundry actor (img, name, system data, biography, etc.). Use list-characters first to get the actorId. Pass folderPath ("Parent/Child") to move the actor into a nested folder, creating it if needed.',
@@ -173,6 +249,49 @@ export class ActorManagementTools {
     if (result?.error) throw new Error(`Error updating actor items: ${result.error}`);
     return {
       content: [{ type: 'text', text: `Updated ${result.updated} item(s) on actor ${args.actorId}.` }],
+    };
+  }
+
+  async handleFixItemActions(args: any) {
+    const result = await this.foundryClient.query('foundry-mcp-bridge.fixItemActions', args);
+    if (result?.error) throw new Error(`fix-item-actions failed: ${result.error}`);
+    return { content: [{ type: 'text', text: `Fixed item ${args.itemId}: ${result.message}` }] };
+  }
+
+  async handleCreateItemAction(args: any) {
+    const result = await this.foundryClient.query('foundry-mcp-bridge.createItemAction', args);
+    if (result?.error) throw new Error(`Error creating item action: ${result.error}`);
+    return {
+      content: [{ type: 'text', text: `Action created on item ${args.itemId}. Action ID: ${result.actionId}` }],
+    };
+  }
+
+  async handleRepairItemActions(args: any) {
+    const result = await this.foundryClient.query('foundry-mcp-bridge.repairItemActions', args);
+    if (result?.error) throw new Error(`repair-item-actions failed: ${result.error}`);
+    if (result?.alreadyClean) return { content: [{ type: 'text', text: `Item ${args.itemId} already has ≤1 action — nothing to do. Pass force:true to recreate anyway.` }] };
+    const keyInfo = result.canonicalKey !== undefined
+      ? `\nMap key used: "${result.canonicalKey}"${result.originalKey !== result.canonicalKey ? ` (was "${result.originalKey}" — fixed mismatch!)` : ' (matches internal _id)'}`
+      : '';
+    return { content: [{ type: 'text', text: `Repaired item ${args.itemId}: removed ${result.removed} duplicate action(s). New ID: ${result.newId}${keyInfo}` }] };
+  }
+
+  async handleGetItemActions(args: any) {
+    const result = await this.foundryClient.query('foundry-mcp-bridge.getItemActions', args);
+    if (result?.error) throw new Error(`Error reading item actions: ${result.error}`);
+    const lines = [`Item: ${result.itemName} (${result.itemId})`, `Total actions: ${result.count}`, ``];
+    for (const [id, data] of Object.entries(result.actions as Record<string, any>)) {
+      const mismatch = data.keyMatchesId === false ? ` ⚠️ KEY MISMATCH (internalId=${data.internalId})` : '';
+      lines.push(`  mapKey="${id}" internalId="${data.internalId}" → ${data.name} (${data.type})${mismatch}`);
+    }
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  }
+
+  async handleDeleteItemActions(args: any) {
+    const result = await this.foundryClient.query('foundry-mcp-bridge.deleteItemActions', args);
+    if (result?.error) throw new Error(`Error deleting item actions: ${result.error}`);
+    return {
+      content: [{ type: 'text', text: `Removed ${result.removed} action(s) from item ${args.itemId}. Remaining: ${result.remaining}.` }],
     };
   }
 

@@ -100,6 +100,24 @@ export class GuardManagementTools {
         },
       },
       {
+        name: 'guard-patrols-update',
+        description: 'Update an existing patrol by ID.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            patrolId: { type: 'string', description: 'Patrol ID to update' },
+            name: { type: 'string' },
+            subtitle: { type: 'string' },
+            soldierSlots: { type: 'number', description: 'Number of available slots (1-11)' },
+            baseStats: { type: 'object' },
+            officerId: { type: 'string', description: 'ID of the assigned officer (or null)' },
+            maxHope: { type: 'number', description: 'Max hope pool (0-6)' },
+            currentHope: { type: 'number' },
+          },
+          required: ['patrolId'],
+        },
+      },
+      {
         name: 'guard-patrols-delete',
         description: 'Delete a patrol by ID.',
         inputSchema: {
@@ -117,14 +135,31 @@ export class GuardManagementTools {
       {
         name: 'guard-resources-create',
         description: 'Create a guard resource.',
-        inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            description: { type: 'string' },
+            quantity: { type: 'number' },
+            image: { type: 'string' },
+            organizationId: { type: 'string' },
+          },
+          required: ['name'],
+        },
       },
       {
         name: 'guard-resources-update',
         description: 'Update a guard resource.',
         inputSchema: {
           type: 'object',
-          properties: { id: { type: 'string' } },
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string' },
+            description: { type: 'string' },
+            quantity: { type: 'number' },
+            image: { type: 'string' },
+            organizationId: { type: 'string' },
+          },
           required: ['id'],
         },
       },
@@ -248,12 +283,31 @@ export class GuardManagementTools {
       {
         name: 'guard-crimes-create',
         description: 'Create a crime.',
-        inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            description: { type: 'string' },
+            offenseType: { type: 'string', enum: ['minor', 'major', 'capital', 'civil'], description: 'Severity of the offense' },
+            customSentence: { type: 'string', description: 'Custom sentence description (overrides default)' },
+          },
+          required: ['name'],
+        },
       },
       {
         name: 'guard-crimes-update',
         description: 'Update a crime.',
-        inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string' },
+            description: { type: 'string' },
+            offenseType: { type: 'string', enum: ['minor', 'major', 'capital', 'civil'] },
+            customSentence: { type: 'string' },
+          },
+          required: ['id'],
+        },
       },
       {
         name: 'guard-crimes-delete',
@@ -301,12 +355,37 @@ export class GuardManagementTools {
       {
         name: 'guard-pois-create',
         description: 'Create a point of interest.',
-        inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            actorId: { type: 'string', description: 'Linked Foundry actor ID' },
+            img: { type: 'string', description: 'Image path or URL' },
+            notes: { type: 'string' },
+            possibleCrimes: { type: 'array', items: { type: 'string' }, description: 'Crime IDs linked to this POI' },
+            gangIds: { type: 'array', items: { type: 'string' }, description: 'Gang IDs linked to this POI' },
+            status: { type: 'string', enum: ['active', 'arrested', 'released', 'deceased'] },
+          },
+          required: ['name'],
+        },
       },
       {
         name: 'guard-pois-update',
         description: 'Update a point of interest.',
-        inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string' },
+            actorId: { type: 'string' },
+            img: { type: 'string' },
+            notes: { type: 'string' },
+            possibleCrimes: { type: 'array', items: { type: 'string' } },
+            gangIds: { type: 'array', items: { type: 'string' } },
+            status: { type: 'string', enum: ['active', 'arrested', 'released', 'deceased'] },
+          },
+          required: ['id'],
+        },
       },
       {
         name: 'guard-pois-delete',
@@ -322,12 +401,41 @@ export class GuardManagementTools {
       {
         name: 'guard-prisoners-create',
         description: 'Create a prisoner.',
-        inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            actorId: { type: 'string', description: 'Linked Foundry actor ID' },
+            img: { type: 'string', description: 'Image path or URL' },
+            cellIndex: { type: 'number', description: 'Cell index where the prisoner is held' },
+            notes: { type: 'string' },
+            crimes: { type: 'array', items: { type: 'string' }, description: 'Crime IDs from the crime catalog' },
+            sentencePhases: { type: 'number', description: 'Number of phases for the sentence' },
+            status: { type: 'string', enum: ['awaiting', 'serving', 'released', 'executed'] },
+          },
+          required: ['name'],
+        },
       },
       {
         name: 'guard-prisoners-update',
         description: 'Update a prisoner.',
-        inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string' },
+            actorId: { type: 'string' },
+            img: { type: 'string' },
+            cellIndex: { type: 'number' },
+            notes: { type: 'string' },
+            crimes: { type: 'array', items: { type: 'string' } },
+            sentencePhases: { type: 'number' },
+            sentenceStartPhase: { type: 'number' },
+            releaseTurn: { type: 'number', description: 'Turn on which the prisoner is released (null = indefinite)' },
+            status: { type: 'string', enum: ['awaiting', 'serving', 'released', 'executed'] },
+          },
+          required: ['id'],
+        },
       },
       {
         name: 'guard-prisoners-delete',
@@ -798,6 +906,134 @@ export class GuardManagementTools {
           required: ['officerId', 'data'],
         },
       },
+      // ── Decisions ────────────────────────────────────────────────────────
+      {
+        name: 'guard-decisions-list',
+        description: 'List all guard decisions (talent tree nodes).',
+        inputSchema: { type: 'object', properties: {} },
+      },
+      {
+        name: 'guard-decisions-create',
+        description: 'Create a guard decision node in the talent tree.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            img: { type: 'string', description: 'Icon image path' },
+            description: { type: 'string', description: 'Rich HTML description' },
+            col: { type: 'number', description: 'Grid column (0-based)' },
+            row: { type: 'number', description: 'Grid row (0-based)' },
+            parentIds: { type: 'array', items: { type: 'string' }, description: 'IDs of parent nodes (incoming connections)' },
+            visible: { type: 'boolean', description: 'Whether players can see this node (default false)' },
+            state: { type: 'string', enum: ['locked', 'unlocked'], description: 'Node state: locked=shown dimmed, unlocked=fully revealed' },
+            section: { type: 'string', description: 'ID of the section (tab) this node belongs to' },
+          },
+          required: ['name'],
+        },
+      },
+      {
+        name: 'guard-decisions-update',
+        description: 'Update a guard decision node.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string' },
+            img: { type: 'string' },
+            description: { type: 'string' },
+            col: { type: 'number' },
+            row: { type: 'number' },
+            parentIds: { type: 'array', items: { type: 'string' } },
+            visible: { type: 'boolean' },
+            state: { type: 'string', enum: ['locked', 'unlocked'] },
+            section: { type: 'string', description: 'Move node to this section ID' },
+          },
+          required: ['id'],
+        },
+      },
+      {
+        name: 'guard-decisions-delete',
+        description: 'Delete a guard decision node by ID.',
+        inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+      },
+      // ── Decision Sections ─────────────────────────────────────────────────
+      {
+        name: 'guard-decision-sections-list',
+        description: 'List all decision sections (tabs in the talent tree).',
+        inputSchema: { type: 'object', properties: {} },
+      },
+      {
+        name: 'guard-decision-sections-create',
+        description: 'Create a new decision section (tab).',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string', description: 'Section display name' },
+            order: { type: 'number', description: 'Display order (0-based). Defaults to last.' },
+          },
+          required: ['name'],
+        },
+      },
+      {
+        name: 'guard-decision-sections-update',
+        description: 'Update a decision section.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string' },
+            order: { type: 'number' },
+          },
+          required: ['id'],
+        },
+      },
+      {
+        name: 'guard-decision-sections-delete',
+        description: 'Delete a decision section. Nodes in the deleted section are reassigned to the next available section.',
+        inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+      },
+      // ── Abilities / Favors ────────────────────────────────────────────────
+      {
+        name: 'guard-abilities-list',
+        description: 'List all guard abilities and favors.',
+        inputSchema: { type: 'object', properties: {} },
+      },
+      {
+        name: 'guard-abilities-create',
+        description: 'Create a guard ability / favor.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            img: { type: 'string', description: 'Icon image path' },
+            description: { type: 'string', description: 'Rich HTML description' },
+            cost: { type: 'string', description: 'Cost label (e.g. "2 Esperanza")' },
+            category: { type: 'string', description: 'Category / tag' },
+          },
+          required: ['name'],
+        },
+      },
+      {
+        name: 'guard-abilities-update',
+        description: 'Update a guard ability / favor.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string' },
+            name: { type: 'string' },
+            img: { type: 'string' },
+            description: { type: 'string' },
+            cost: { type: 'string' },
+            category: { type: 'string' },
+          },
+          required: ['id'],
+        },
+      },
+      {
+        name: 'guard-abilities-delete',
+        description: 'Delete a guard ability / favor by ID.',
+        inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+      },
     ];
   }
 
@@ -913,6 +1149,9 @@ export class GuardManagementTools {
   }
   async handlePatrolsCreate(args: any) {
     return this.json(await this.query('guard-management.patrols.create', args));
+  }
+  async handlePatrolsUpdate(args: any) {
+    return this.json(await this.query('guard-management.patrols.update', args));
   }
   async handlePatrolsDelete(args: any) {
     return this.json(await this.query('guard-management.patrols.delete', args));
@@ -1062,5 +1301,47 @@ export class GuardManagementTools {
   }
   async handlePhaseReportsSearch(args: any) {
     return this.json(await this.query('guard-management.phaseReports.search', args));
+  }
+
+  // ── Decisions ──────────────────────────────────────────────────────────
+  async handleDecisionsList(_args: any) {
+    return this.json(await this.query('guard-management.decisions.list'));
+  }
+  async handleDecisionsCreate(args: any) {
+    return this.json(await this.query('guard-management.decisions.create', args));
+  }
+  async handleDecisionsUpdate(args: any) {
+    return this.json(await this.query('guard-management.decisions.update', args));
+  }
+  async handleDecisionsDelete(args: any) {
+    return this.json(await this.query('guard-management.decisions.delete', args));
+  }
+
+  // ── Decision Sections ──────────────────────────────────────────────────
+  async handleDecisionSectionsList(_args: any) {
+    return this.json(await this.query('guard-management.decisions.sections.list'));
+  }
+  async handleDecisionSectionsCreate(args: any) {
+    return this.json(await this.query('guard-management.decisions.sections.create', args));
+  }
+  async handleDecisionSectionsUpdate(args: any) {
+    return this.json(await this.query('guard-management.decisions.sections.update', args));
+  }
+  async handleDecisionSectionsDelete(args: any) {
+    return this.json(await this.query('guard-management.decisions.sections.delete', args));
+  }
+
+  // ── Abilities / Favors ─────────────────────────────────────────────────
+  async handleAbilitiesList(_args: any) {
+    return this.json(await this.query('guard-management.abilities.list'));
+  }
+  async handleAbilitiesCreate(args: any) {
+    return this.json(await this.query('guard-management.abilities.create', args));
+  }
+  async handleAbilitiesUpdate(args: any) {
+    return this.json(await this.query('guard-management.abilities.update', args));
+  }
+  async handleAbilitiesDelete(args: any) {
+    return this.json(await this.query('guard-management.abilities.delete', args));
   }
 }

@@ -78,7 +78,7 @@ export class DaggerheartAdapter implements SystemAdapter {
           difficulty: sys.difficulty ?? undefined,
           adversaryType: sys.type ?? sys.adversaryType ?? undefined,
           environment: doc.type === 'environment' ? (sys.environment ?? doc.name) : undefined,
-          hp: sys.hp?.max ?? sys.hp?.value ?? undefined,
+          hp: sys.resources?.hitPoints?.max ?? sys.hp?.max ?? sys.hp?.value ?? undefined,
           evasion: sys.evasion ?? undefined,
           armorScore: sys.armorScore ?? sys.armor?.score ?? undefined,
         },
@@ -193,21 +193,65 @@ export class DaggerheartAdapter implements SystemAdapter {
   extractBasicInfo(actorData: any): any {
     const sys = actorData?.system ?? {};
 
-    return {
+    // Adversaries store HP/Stress under resources.hitPoints / resources.stress (isReversed=true)
+    // Characters store them directly under hp / stress
+    const hpSource = sys.resources?.hitPoints ?? sys.hp ?? null;
+    const stressSource = sys.resources?.stress ?? sys.stress ?? null;
+    const hopeSource = sys.resources?.hope ?? sys.hope ?? null;
+
+    const result: any = {
       hp: {
-        value: sys.hp?.value ?? null,
-        max: sys.hp?.max ?? null,
+        value: hpSource?.value ?? null,
+        max: hpSource?.max ?? null,
       },
       stress: {
-        value: sys.stress?.value ?? null,
-        max: sys.stress?.max ?? null,
+        value: stressSource?.value ?? null,
+        max: stressSource?.max ?? null,
       },
       hope: {
-        value: sys.hope?.value ?? null,
-        max: sys.hope?.max ?? null,
+        value: hopeSource?.value ?? null,
+        max: hopeSource?.max ?? null,
       },
       evasion: sys.evasion ?? null,
       armorScore: sys.armorScore ?? sys.armor?.score ?? null,
+    };
+
+    // Adversary-specific fields
+    if (actorData?.type === 'adversary') {
+      result.adversary = {
+        tier: sys.tier ?? null,
+        type: sys.type ?? null,
+        difficulty: sys.difficulty ?? null,
+        damageThresholds: {
+          major: sys.damageThresholds?.major ?? null,
+          severe: sys.damageThresholds?.severe ?? null,
+        },
+        attack: this._formatAdversaryAttack(sys),
+      };
+    }
+
+    return result;
+  }
+
+  private _formatAdversaryAttack(sys: any): any {
+    const atk = sys.attack;
+    if (!atk) return null;
+
+    // Parse damage formula from nested structure
+    const dmgPart = atk.damage?.parts?.hitPoints?.value;
+    let damageFormula: string | null = null;
+    if (dmgPart) {
+      const count = dmgPart.flatMultiplier ?? 1;
+      const die = dmgPart.dice ?? 'd6';
+      const bonus = dmgPart.bonus;
+      damageFormula = `${count}${die}${bonus != null && bonus !== 0 ? (bonus > 0 ? `+${bonus}` : bonus) : ''}`;
+    }
+
+    return {
+      name: atk.name ?? null,
+      range: atk.range ?? null,
+      attackBonus: sys.bonuses?.roll?.attack?.bonus ?? null,
+      damage: damageFormula,
     };
   }
 }
