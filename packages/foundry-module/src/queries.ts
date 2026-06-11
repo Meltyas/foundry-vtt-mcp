@@ -1985,8 +1985,9 @@ export class QueryHandlers {
         const item = actor.items.get(params.itemId);
         if (!item) return;
         const actionInstance = new cls(actionData, { parent: item });
-        const existingActions = (item.system as any).actions?.toObject?.() ?? {};
-        await item.update({ 'system.actions': { ...existingActions, [actionId]: actionInstance.toObject() } });
+        // Use dot-notation path (same as Daggerheart's own action creation) so the
+        // TypedObjectField stores the entry under the correct key instead of normalising to "0".
+        await item.update({ [`system.actions.${actionId}`]: actionInstance.toObject() });
       };
 
       // Update base actor
@@ -2133,16 +2134,15 @@ export class QueryHandlers {
 
         // Skip if already clean: exactly 1 action AND no key mismatch AND no force override
         if (actionIds.length <= 1 && !hasMismatch && !params.force) return { alreadyClean: true };
-        const newItemData = (foundry as any).utils.deepClone(itemObj);
-        newItemData.system.actions = { [canonicalKey]: firstActionData };
 
-        // Delete the bloated item (or the single item if force=true)
-        await actor.deleteEmbeddedDocuments('Item', [params.itemId]);
-
-        // Recreate with the same _id — Foundry V14 honours the _id in createEmbeddedDocuments
-        const created = await actor.createEmbeddedDocuments('Item', [newItemData]);
-        const newId = created[0]?.id ?? created[0]?._id ?? params.itemId;
-        return { newId, removed: actionIds.length - 1, canonicalKey, originalKey: firstKey };
+        // Fix: clear all actions bypassing _preUpdate (avoids the EmbeddedCollectionField crash),
+        // then re-add the canonical action via dot-notation (same as Daggerheart's own code).
+        // This avoids delete+createEmbeddedDocuments which triggers _preCreate and re-normalises
+        // the TypedObjectField map key back to "0".
+        await actor.updateEmbeddedDocuments('Item', [{ _id: params.itemId, 'system.actions': {} }], { diff: false, noHooks: true });
+        const freshItem = actor.items.get(params.itemId);
+        await freshItem.update({ [`system.actions.${canonicalKey}`]: firstActionData });
+        return { newId: params.itemId, removed: actionIds.length - 1, canonicalKey, originalKey: firstKey };
       };
 
       const baseActor = (game as any).actors?.get(params.actorId);
