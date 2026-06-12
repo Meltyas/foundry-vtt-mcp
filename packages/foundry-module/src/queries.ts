@@ -1985,9 +1985,29 @@ export class QueryHandlers {
         const item = actor.items.get(params.itemId);
         if (!item) return;
         const actionInstance = new cls(actionData, { parent: item });
-        // Use dot-notation path (same as Daggerheart's own action creation) so the
-        // TypedObjectField stores the entry under the correct key instead of normalising to "0".
-        await item.update({ [`system.actions.${actionId}`]: actionInstance.toObject() });
+        // Insert the action. TypedObjectField always assigns sequential keys ("0", "1", ...)
+        // regardless of the dot-notation key we use. The key in the ActionCollection will be
+        // "0" (or the next available). We include _id: actionId as a placeholder.
+        await item.update({ [`system.actions.${actionId}`]: { ...actionInstance.toObject(), _id: actionId } });
+
+        // Post-fix: align _id to match the actual Collection key assigned by TypedObjectField.
+        // Daggerheart builds the UUID as "...Action.{action._id}" and resolves it via
+        // collection.get(action._id). If _id ≠ Collection key, fromUuid returns null → crash.
+        // The Collection key is always a sequential integer ("0", "1", ...) set from _source keys.
+        // We update _id in _source to match that key so the UUID resolves correctly.
+        const freshItem = actor.items.get(params.itemId);
+        const collection = freshItem?.system?.actions;
+        if (collection) {
+          // Find the entry whose current _id is still actionId (we just set it)
+          for (const [mapKey, entry] of (collection as any).entries()) {
+            const storedId = (entry as any)?._id ?? (entry as any)?._source?._id;
+            if (storedId === actionId && mapKey !== actionId) {
+              const rawSrc = (freshItem.toObject() as any).system?.actions?.[mapKey] ?? {};
+              await freshItem.update({ [`system.actions.${mapKey}`]: { ...rawSrc, _id: mapKey } });
+              break;
+            }
+          }
+        }
       };
 
       // Update base actor
@@ -2117,32 +2137,41 @@ export class QueryHandlers {
         const item = actor.items.get(params.itemId);
         if (!item) return null;
 
-        const itemObj = item.toObject() as any;
-        const rawActions = itemObj.system?.actions ?? {};
-        const actionIds = Object.keys(rawActions);
-        if (actionIds.length === 0) return { alreadyClean: true };
+        // item.system.actions is an ActionCollection (extends Foundry Collection / Map-like).
+        // Collection keys are sequential ints assigned by TypedObjectField ("0", "1", ...).
+        // action._id is stored separately in _source._id and may differ from the Collection key.
+        // Daggerheart builds UUID as "...Action.{action._id}" → fromUuid → collection.get(_id).
+        // If _id ≠ key, the get() returns null → ".sheet" crash on right-click.
+        // Fix: update _id in _source to match the Collection key (not the other way around —
+        // the Collection key cannot be changed via item.update()).
+        const collection = item.system?.actions;
+        const collectionSize = (collection as any)?.size ?? 0;
+        if (collectionSize === 0) return { alreadyClean: true };
 
-        // Keep only the first action, discard duplicates.
-        // IMPORTANT: always store the action under its own _id as the Map key.
-        // Daggerheart renders action buttons with UUID "Action.{action._id}".
-        // If the outer key differs from _id (e.g. "0" vs "KQoFpGHN3Hm7iJ2T"),
-        // fromUuid calls item.system.actions.get(_id) → null → ".sheet" crash on right-click.
-        const firstKey = actionIds[0];
-        const firstActionData = rawActions[firstKey];
-        const canonicalKey = (firstActionData as any)?._id ?? firstKey;
-        const hasMismatch = canonicalKey !== firstKey;
+        const entries: [string, any][] = [...(collection as any).entries()];
+        const [firstKey, firstAction] = entries[0];
+        const storedId = (firstAction as any)?._id ?? (firstAction as any)?._source?._id;
+        const hasMismatch = storedId !== firstKey;
 
         // Skip if already clean: exactly 1 action AND no key mismatch AND no force override
-        if (actionIds.length <= 1 && !hasMismatch && !params.force) return { alreadyClean: true };
+        if (entries.length <= 1 && !hasMismatch && !params.force) return { alreadyClean: true };
 
-        // Fix: clear all actions bypassing _preUpdate (avoids the EmbeddedCollectionField crash),
-        // then re-add the canonical action via dot-notation (same as Daggerheart's own code).
-        // This avoids delete+createEmbeddedDocuments which triggers _preCreate and re-normalises
-        // the TypedObjectField map key back to "0".
-        await actor.updateEmbeddedDocuments('Item', [{ _id: params.itemId, 'system.actions': {} }], { diff: false, noHooks: true });
-        const freshItem = actor.items.get(params.itemId);
-        await freshItem.update({ [`system.actions.${canonicalKey}`]: firstActionData });
-        return { newId: params.itemId, removed: actionIds.length - 1, canonicalKey, originalKey: firstKey };
+        // item.toObject() returns deepClone(_source), so system.actions is the raw { "0": {...} } object
+        const rawSourceActions = (item.toObject() as any).system?.actions ?? {};
+
+        if (entries.length > 1) {
+          // Multiple actions (duplicates): clear all and re-add only the first with _id = key
+          const firstRaw = rawSourceActions[firstKey] ?? {};
+          await actor.updateEmbeddedDocuments('Item', [{ _id: params.itemId, 'system.actions': {} }], { diff: false, noHooks: true });
+          const freshItem = actor.items.get(params.itemId);
+          await freshItem.update({ [`system.actions.${firstKey}`]: { ...firstRaw, _id: firstKey } });
+        } else {
+          // Single action with _id ≠ key: just update _id to match the key
+          const firstRaw = rawSourceActions[firstKey] ?? {};
+          await item.update({ [`system.actions.${firstKey}`]: { ...firstRaw, _id: firstKey } });
+        }
+
+        return { newId: params.itemId, removed: entries.length - 1, fixedKey: firstKey, originalId: storedId };
       };
 
       const baseActor = (game as any).actors?.get(params.actorId);
@@ -2181,32 +2210,52 @@ export class QueryHandlers {
       const item = actor.items.get(params.itemId);
       if (!item) return { error: `Item '${params.itemId}' not found` };
 
-      // item.system.actions is a TypedObjectField — may be Map or plain object
-      // Also read via toObject() to get the stored _id inside each action (may differ from Map key)
-      const rawActions = (item.system as any)?.actions ?? {};
-      const storedObj: Record<string, any> = typeof rawActions?.toObject === 'function'
-        ? rawActions.toObject()
-        : (rawActions instanceof Map ? Object.fromEntries(rawActions) : { ...rawActions });
+      // item.system.actions is an ActionCollection (extends Foundry Collection / Map-like).
+      // IMPORTANT: do NOT call .toObject() on ActionCollection — it returns an array (losing keys).
+      // Use .entries() to get [mapKey, actionInstance] pairs directly from the Collection.
+      // The mapKey is the real storage key (set by TypedObjectField from _source keys).
+      // action._id is stored in action._source._id.
+      const rawActions = (item.system as any)?.actions;
+      const entries: [string, any][] = [];
 
-      const actions: Record<string, any> = {};
-      if (rawActions instanceof Map) {
-        rawActions.forEach((v: any, k: string) => {
-          const internalId = v?.id ?? v?._id;
-          actions[k] = { name: v?.name, type: v?.type, internalId, keyMatchesId: k === internalId };
-        });
-      } else {
-        for (const [k, v] of Object.entries(storedObj)) {
-          const live = typeof rawActions?.get === 'function' ? rawActions.get(k) : (rawActions as any)[k];
-          const internalId = (live as any)?.id ?? (live as any)?._id ?? (v as any)?._id ?? k;
-          actions[k] = { name: (live as any)?.name ?? (v as any)?.name, type: (live as any)?.type ?? (v as any)?.type, internalId, keyMatchesId: k === internalId };
-        }
+      if (rawActions && typeof (rawActions as any).entries === 'function') {
+        for (const [k, v] of (rawActions as any).entries()) entries.push([k, v]);
+      } else if (rawActions && typeof rawActions === 'object') {
+        for (const [k, v] of Object.entries(rawActions as object)) entries.push([k, v]);
       }
+
+      // GROUND TRUTH CHECK: replicate exactly what Daggerheart does when a user clicks/right-clicks
+      // an action button. It builds the UUID "{item.uuid}.Action.{action.id}" and resolves it via
+      // fromUuid(). If that returns null, the right-click handler crashes on ".sheet" of null.
+      // This is the only check that cannot lie — it runs the same code path as the bug itself.
+      // Do NOT trust mapKey/internalId comparison alone; this fromUuid result is authoritative.
+      const actions: Record<string, any> = {};
+      for (const [k, v] of entries) {
+        const internalId = (v as any)?._id ?? (v as any)?._source?._id ?? k;
+        const actionUuid = (v as any)?.uuid ?? `${item.uuid}.Action.${internalId}`;
+        let clickable = false;
+        try {
+          const resolved = await (foundry as any).utils.fromUuid(actionUuid);
+          clickable = resolved != null;
+        } catch { clickable = false; }
+        actions[k] = {
+          name: (v as any)?.name,
+          type: (v as any)?.type,
+          internalId,
+          keyMatchesId: k === internalId,
+          uuid: actionUuid,
+          clickable, // ← authoritative: true means right-click will NOT crash
+        };
+      }
+
+      const broken = Object.values(actions).filter((a: any) => !a.clickable).length;
 
       return {
         itemId: params.itemId,
         itemName: item.name,
         count: Object.keys(actions).length,
         actionIds: Object.keys(actions),
+        broken, // number of actions whose fromUuid resolves null → would crash on right-click
         actions,
       };
     } catch (error: any) {

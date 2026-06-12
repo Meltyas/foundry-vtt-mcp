@@ -269,20 +269,23 @@ export class ActorManagementTools {
   async handleRepairItemActions(args: any) {
     const result = await this.foundryClient.query('foundry-mcp-bridge.repairItemActions', args);
     if (result?.error) throw new Error(`repair-item-actions failed: ${result.error}`);
-    if (result?.alreadyClean) return { content: [{ type: 'text', text: `Item ${args.itemId} already has ≤1 action — nothing to do. Pass force:true to recreate anyway.` }] };
-    const keyInfo = result.canonicalKey !== undefined
-      ? `\nMap key used: "${result.canonicalKey}"${result.originalKey !== result.canonicalKey ? ` (was "${result.originalKey}" — fixed mismatch!)` : ' (matches internal _id)'}`
+    if (result?.alreadyClean) return { content: [{ type: 'text', text: `Item ${args.itemId} already clean — no mismatch, no duplicates.` }] };
+    const idInfo = result.fixedKey !== undefined
+      ? `\nCollection key: "${result.fixedKey}" | _id fixed: "${result.originalId}" → "${result.fixedKey}"`
       : '';
-    return { content: [{ type: 'text', text: `Repaired item ${args.itemId}: removed ${result.removed} duplicate action(s). New ID: ${result.newId}${keyInfo}` }] };
+    return { content: [{ type: 'text', text: `Repaired item ${args.itemId}: removed ${result.removed} duplicate(s), _id aligned to key.${idInfo}` }] };
   }
 
   async handleGetItemActions(args: any) {
     const result = await this.foundryClient.query('foundry-mcp-bridge.getItemActions', args);
     if (result?.error) throw new Error(`Error reading item actions: ${result.error}`);
-    const lines = [`Item: ${result.itemName} (${result.itemId})`, `Total actions: ${result.count}`, ``];
+    const brokenNote = result.broken > 0 ? ` — ⚠️ ${result.broken} would CRASH on right-click` : ' — all clickable ✓';
+    const lines = [`Item: ${result.itemName} (${result.itemId})`, `Total actions: ${result.count}${brokenNote}`, ``];
     for (const [id, data] of Object.entries(result.actions as Record<string, any>)) {
-      const mismatch = data.keyMatchesId === false ? ` ⚠️ KEY MISMATCH (internalId=${data.internalId})` : '';
-      lines.push(`  mapKey="${id}" internalId="${data.internalId}" → ${data.name} (${data.type})${mismatch}`);
+      // `clickable` is the authoritative signal (fromUuid succeeded = no crash). keyMatchesId is
+      // informational only — a false there with clickable:true is harmless display noise.
+      const status = data.clickable === false ? ' ⚠️ BROKEN (fromUuid → null, will crash on right-click)' : ' ✓';
+      lines.push(`  key="${id}" id="${data.internalId}" → ${data.name} (${data.type})${status}`);
     }
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   }
